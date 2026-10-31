@@ -109,24 +109,31 @@ def upload_license(payload: LicensePayload):
         signature = generate_license_signature(licensee, expires_at)
 
     if payload.license_key and not (licensee and expires_at and signature):
-        raw_upper = payload.license_key.strip().upper()
-        if raw_upper in ("DEMO:SHORT_5M", "DEMO:5M", "SHORT_5M", "SHORT"):
-            now = datetime.now(timezone.utc)
-            licensee = payload.licensee or "Demo Bank"
-            expires_at = (now + timedelta(minutes=5)).isoformat()
-            signature = generate_license_signature(licensee, expires_at)
-        elif raw_upper in ("DEMO:LONG_1Y", "DEMO:1Y", "LONG_1Y", "LONG"):
+        raw_key = payload.license_key.strip()
+        raw_lower = raw_key.lower()
+
+        # Master demo renewal key: "Gandadagudi"
+        if raw_lower in ("gandadagudi", "gandhadagudi", "gandada gudi", "gandhada gudi"):
             now = datetime.now(timezone.utc)
             licensee = payload.licensee or "Demo Bank"
             expires_at = (now + timedelta(days=365)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
-        elif raw_upper in ("DEMO:EXPIRED", "EXPIRED"):
+        elif raw_key.upper() in ("DEMO:SHORT_5M", "DEMO:5M", "SHORT_5M", "SHORT"):
+            now = datetime.now(timezone.utc)
+            licensee = payload.licensee or "Demo Bank"
+            expires_at = (now + timedelta(minutes=5)).isoformat()
+            signature = generate_license_signature(licensee, expires_at)
+        elif raw_key.upper() in ("DEMO:LONG_1Y", "DEMO:1Y", "LONG_1Y", "LONG"):
+            now = datetime.now(timezone.utc)
+            licensee = payload.licensee or "Demo Bank"
+            expires_at = (now + timedelta(days=365)).isoformat()
+            signature = generate_license_signature(licensee, expires_at)
+        elif raw_key.upper() in ("DEMO:EXPIRED", "EXPIRED"):
             now = datetime.now(timezone.utc)
             licensee = payload.licensee or "Demo Bank"
             expires_at = (now - timedelta(minutes=1)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
-        raw_key = payload.license_key.strip()
-        if raw_key.startswith("{") and raw_key.endswith("}"):
+        elif raw_key.startswith("{") and raw_key.endswith("}"):
             try:
                 import json
                 parsed = json.loads(raw_key)
@@ -135,8 +142,7 @@ def upload_license(payload: LicensePayload):
                 signature = parsed.get("signature")
             except Exception:
                 pass
-
-        if not (licensee and expires_at and signature):
+        else:
             last_colon = raw_key.rfind(":")
             if last_colon != -1:
                 sig_cand = raw_key[last_colon + 1:].strip()
@@ -147,18 +153,13 @@ def upload_license(payload: LicensePayload):
                     expires_at = rest[first_colon + 1:].strip()
                     signature = sig_cand
 
-        if not (licensee and expires_at and signature):
-            licensee = "Licensed User"
-            expires_at = (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
-            signature = generate_license_signature(licensee, expires_at)
-
     if not licensee or not expires_at or not signature:
-        raise HTTPException(status_code=400, detail="Missing required license fields (licensee, expires_at, signature)")
+        raise HTTPException(status_code=400, detail="Invalid license key. Please check your renewal key.")
 
     try:
         license_manager.set_license(licensee, expires_at, signature)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid license key. Please check your renewal key.")
 
     return {
         "status": "VALID",

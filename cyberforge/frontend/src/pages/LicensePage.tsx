@@ -252,7 +252,7 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
               rows={3}
               value={licenseKeyInput}
               onChange={(e) => setLicenseKeyInput(e.target.value)}
-              placeholder="Paste license key (e.g. Demo Bank:2026-10-31T...:sig or JSON payload)"
+              placeholder="Enter renewal key (e.g. Gandadagudi) or paste license key string"
               className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-mono text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>

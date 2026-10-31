@@ -1,4 +1,4 @@
-import json
+﻿import json
 from datetime import datetime, timezone, timedelta
 import pytest
 from fastapi import HTTPException
@@ -96,4 +96,31 @@ def test_reject_invalid_signature():
             signature="0000000000000000000000000000000000000000000000000000000000000000"
         ))
     assert exc.value.status_code == 400
-    assert "Invalid cryptographic signature" in exc.value.detail
+    assert "Invalid license key" in exc.value.detail
+
+
+def test_renew_with_gandadagudi_key():
+    # Simulate expired 5-minute license
+    past_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    license_manager.set_license("Demo Bank", past_time, generate_license_signature("Demo Bank", past_time))
+    assert get_license()["status"] == "EXPIRED"
+
+    # Renew using master key 'Gandadagudi'
+    res = upload_license(LicensePayload(license_key="Gandadagudi"))
+    assert res["status"] == "VALID"
+    assert res["active"] is True
+    assert get_license()["status"] == "ACTIVE"
+    assert get_license()["active"] is True
+    assert license_manager.is_expired() is False
+
+    # Also works lowercased
+    res2 = upload_license(LicensePayload(license_key="gandadagudi"))
+    assert res2["status"] == "VALID"
+    assert res2["active"] is True
+
+
+def test_invalid_key_clean_error():
+    with pytest.raises(HTTPException) as exc:
+        upload_license(LicensePayload(license_key="RandomGarbage1234"))
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Invalid license key. Please check your renewal key."

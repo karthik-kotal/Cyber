@@ -97,7 +97,8 @@ function RenewalForm({
         spellCheck={false}
         value={key}
         onChange={(e) => setKey(e.target.value)}
-        className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2.5 text-sm text-white placeholder-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+        placeholder="Enter renewal key (e.g. Gandadagudi)"
+        className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2.5 text-sm text-white placeholder-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
       />
       {error ? (
         <p role="alert" className="mt-2 text-xs text-rose-300">
