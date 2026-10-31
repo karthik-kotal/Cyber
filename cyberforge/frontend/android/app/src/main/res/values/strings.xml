@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CyberForge</string>
+    <string name="title_activity_main">CyberForge</string>
+    <string name="package_name">com.cyberforge.scammap</string>
+    <string name="custom_url_scheme">com.cyberforge.scammap</string>
+</resources>
