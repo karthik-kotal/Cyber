@@ -33,21 +33,34 @@ export function AlertsPage({ lang }: { lang: Lang }): React.JSX.Element {
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-bold text-slate-900">{get(lang, 'alertsTitle')}</h2>
-      {data.alerts.map((alert) => (
-        <div key={alert.id} className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              {alert.type}
-            </span>
-            <span className="text-xs text-slate-400">{alert.pincode}</span>
+      {data.alerts.map((alert, idx) => {
+        const title = alert.title || (
+          alert.type === 'SPIKE'
+            ? `Report Surge in Pincode ${alert.pincode || 'Area'}`
+            : `New Scam Type in Pincode ${alert.pincode || 'Area'}`
+        );
+        const body = alert.body || alert.description || (
+          alert.type === 'SPIKE'
+            ? `${alert.count ?? 'High number of'} reports received in the last ${alert.window || '24h'} (daily baseline: ${alert.baseline_per_day ?? 0}/day).`
+            : `${alert.scam_type || 'Unclassified scam'} was reported in this area for the first time in 30 days.`
+        );
+        const key = alert.id || `${alert.type}-${alert.pincode}-${alert.scam_type || idx}`;
+        return (
+          <div key={key} className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-rose-600">
+                {alert.severity ? `[${alert.severity}] ` : ''}{alert.type}
+              </span>
+              <span className="text-xs text-slate-500 font-medium">Pincode: {alert.pincode || '—'}</span>
+            </div>
+            <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+            <p className="mt-1 text-sm text-slate-600">{body}</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              {alert.scam_type ? `${alert.scam_type} · ` : ''}{alert.window ? `Window: ${alert.window}` : ''}
+            </p>
           </div>
-          <h3 className="text-sm font-bold text-slate-900">{alert.title}</h3>
-          <p className="mt-1 text-sm text-slate-600">{alert.body}</p>
-          <p className="mt-1 text-[11px] text-slate-400">
-            {alert.scam_type} \u00b7 {alert.created_at}
-          </p>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }

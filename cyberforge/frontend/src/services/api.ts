@@ -160,10 +160,11 @@ async function jsonFetch<T>(path: string, options: RequestOptions = {}): Promise
     let bodyError: ApiErrorBody | null = null;
     try {
       bodyError = (await response.json()) as ApiErrorBody;
-      detail = bodyError?.detail ?? bodyError?.message ?? bodyError?.error ?? null;
-      if (typeof detail !== 'string' && bodyError) {
-        // FastAPI validation errors: detail: {loc, msg}[] | NestedModel
-        detail = JSON.stringify(bodyError.detail ?? bodyError.message ?? bodyError.error);
+      const rawDetail = bodyError?.detail ?? bodyError?.message ?? bodyError?.error;
+      if (typeof rawDetail === 'string') {
+        detail = rawDetail;
+      } else if (rawDetail !== undefined && rawDetail !== null) {
+        detail = JSON.stringify(rawDetail);
       }
     } catch {
       // no JSON body; fall through with null detail

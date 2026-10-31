@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get("/map", response_model=MapResponse)
 def get_map(
-    pincode: Optional[str] = Query("560102", description="Center pincode for radius filtering"),
+    pincode: Optional[str] = Query(None, description="Center pincode for radius filtering"),
     days: int = Query(7, ge=1, le=90, description="Time window in days (default 7)"),
     radius_km: float = Query(2.0, ge=0.1, le=500.0, description="Search radius in kilometers (default 2)")
 ):
@@ -98,6 +98,7 @@ def get_map(
                 city=area["city"],
                 count=total_reports,
                 top_scam_type=top_scam,
+                scam_type=top_scam,
                 severity=severity,
                 lat=area["lat"],
                 lng=area["lng"]

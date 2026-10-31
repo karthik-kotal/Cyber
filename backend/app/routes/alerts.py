@@ -76,7 +76,10 @@ def get_alerts(
                     window="24h",
                     count=count_24h,
                     baseline_per_day=baseline_per_day,
-                    severity="HIGH"
+                    severity="HIGH",
+                    title=f"Spike in Scam Reports: Pincode {target_pin}",
+                    body=f"{count_24h} reports recorded in the last 24h against a daily baseline of {baseline_per_day:.1f}.",
+                    description=f"Surge of {count_24h} reports in 24h"
                 ))
 
             # 2. NEW_TYPE Check
@@ -104,7 +107,10 @@ def get_alerts(
                         pincode=target_pin,
                         scam_type=stype,
                         window="24h",
-                        severity="MEDIUM"
+                        severity="MEDIUM",
+                        title=f"New Scam Type Detected: {stype}",
+                        body=f"Scam type '{stype}' was reported in pincode {target_pin} in the last 24h (not observed in prior 30 days).",
+                        description=f"First report of '{stype}' in 30 days"
                     ))
 
         # Check any recorded alerts in alerts table for this identifier or pincode
@@ -122,7 +128,10 @@ def get_alerts(
                     window=r["window"] or "24h",
                     count=r["count"],
                     baseline_per_day=r["baseline_per_day"],
-                    severity=r["severity"]
+                    severity=r["severity"],
+                    title=f"{r['type']} Alert: Pincode {r['pincode']}",
+                    body=f"Alert recorded for pincode {r['pincode']} ({r['scam_type'] or 'general'}).",
+                    description=f"{r['type']} alert"
                 ))
 
     # Filter by alert_type if requested

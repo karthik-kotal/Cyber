@@ -10,7 +10,12 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
   const [pincode, setPincode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const [submitted, setSubmitted] = useState<{ id: string; display_value: string } | null>(null);
+  const [submitted, setSubmitted] = useState<{
+    id: string;
+    display_value: string;
+    report_id?: string;
+    case_id?: string;
+  } | null>(null);
 
   const channelLabel = (c: ReportChannel): string => {
     const map: Record<ReportChannel, string> = {
@@ -45,7 +50,14 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
       try {
         const res = await submitReport(payload);
         // Only show submitted once the backend confirms success (201).
-        setSubmitted({ id: res.id, display_value: res.display_value });
+        const resolvedId = res.report_id || res.id || '';
+        const resolvedDisplay = res.display_value || res.case_id || identifier.trim();
+        setSubmitted({
+          id: resolvedId,
+          display_value: resolvedDisplay,
+          report_id: res.report_id || res.id || '',
+          case_id: res.case_id || res.display_value || '',
+        });
       } catch (err) {
         setError(
           err instanceof ApiError
@@ -64,7 +76,10 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
       <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
         <span aria-hidden="true" className="text-4xl">✅</span>
         <h2 className="mt-2 text-lg font-bold text-emerald-900">{get(lang, 'reportOk')}</h2>
-        <p className="mt-1 text-sm text-emerald-700">{submitted.display_value}</p>
+        <p className="mt-1 text-sm font-semibold text-emerald-700">{submitted.display_value}</p>
+        {submitted.report_id ? (
+          <p className="mt-1 text-xs text-emerald-600">Reference ID: {submitted.report_id}</p>
+        ) : null}
         <button
           type="button"
           onClick={() => {

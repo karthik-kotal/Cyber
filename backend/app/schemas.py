@@ -77,6 +77,7 @@ class MapCluster(BaseModel):
     city: str
     count: int
     top_scam_type: str
+    scam_type: Optional[str] = None
     severity: str  # CRIT, HIGH, MED
     lat: float
     lng: float

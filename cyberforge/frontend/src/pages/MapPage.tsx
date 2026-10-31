@@ -30,7 +30,9 @@ export function MapPage({ lang }: { lang: Lang }): React.JSX.Element {
     }
     const map = mapInstance.current;
     const markers = L.layerGroup().addTo(map);
-    data.points.forEach((p) => {
+    const points = (data.points && data.points.length > 0) ? data.points : (data.clusters || []);
+    points.forEach((p) => {
+      const scamType = p.top_scam_type || p.scam_type || 'Reported Incident';
       L.circleMarker([p.lat, p.lng], {
         radius: Math.min(6 + p.count, 20),
         color: '#dc2626',
@@ -38,13 +40,13 @@ export function MapPage({ lang }: { lang: Lang }): React.JSX.Element {
         fillOpacity: 0.7,
       })
         .bindPopup(
-          `<strong>${p.scam_type}</strong><br/>Reports: ${p.count}<br/>Pincode: ${p.pincode}`,
+          `<strong>${scamType}</strong><br/>${p.locality ? `${p.locality}<br/>` : ''}Reports: ${p.count}<br/>Pincode: ${p.pincode}`,
         )
         .addTo(markers);
     });
-    if (data.points.length > 0) {
+    if (points.length > 0) {
       const group = L.featureGroup(
-        data.points.map((p) => L.circleMarker([p.lat, p.lng])),
+        points.map((p) => L.circleMarker([p.lat, p.lng])),
       );
       map.fitBounds(group.getBounds().pad(0.2));
     }
@@ -76,7 +78,8 @@ export function MapPage({ lang }: { lang: Lang }): React.JSX.Element {
       </div>
     );
   }
-  if (!data || data.points.length === 0) {
+  const activePoints = (data?.points && data.points.length > 0) ? data.points : (data?.clusters || []);
+  if (!data || activePoints.length === 0) {
     return (
       <section className="space-y-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">

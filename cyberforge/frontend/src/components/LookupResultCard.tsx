@@ -78,16 +78,62 @@ export function LookupResultCard({
         ) : null}
         <Row label={get(lang, 'firstSeen')}>{fmtDate(result.first_seen)}</Row>
         <Row label={get(lang, 'lastSeen')}>{fmtDate(result.last_seen)}</Row>
-        {Array.isArray(result.evidence) && result.evidence.length > 0 ? (
-          <Row label={get(lang, 'evidence')}>
-            <ul className="list-disc pl-4 text-left">
-              {result.evidence.map((item, i) => (
-                // Evidence comes from the backend; render verbatim.
-                <li key={i}>{typeof item === 'string' ? item : JSON.stringify(item)}</li>
-              ))}
-            </ul>
-          </Row>
-        ) : null}
+        {/* Render evidence summary or legacy list */}
+        {(() => {
+          if (!result.evidence) return null;
+
+          if (Array.isArray(result.evidence) && result.evidence.length > 0) {
+            return (
+              <Row label={get(lang, 'evidence')}>
+                <ul className="list-disc pl-4 text-left">
+                  {result.evidence.map((item, i) => (
+                    <li key={i}>{typeof item === 'string' ? item : JSON.stringify(item)}</li>
+                  ))}
+                </ul>
+              </Row>
+            );
+          }
+
+          if (typeof result.evidence === 'object' && !Array.isArray(result.evidence)) {
+            const ev = result.evidence;
+            const reports = ev.reports || [];
+            const hasLoss = typeof ev.total_reported_loss_inr === 'number' && ev.total_reported_loss_inr > 0;
+            const hasReports = reports.length > 0;
+            const isVerified = ev.verified || Boolean(ev.business_name);
+
+            if (!hasLoss && !hasReports && !isVerified) return null;
+
+            return (
+              <>
+                {hasLoss ? (
+                  <Row label="Reported Loss">
+                    ₹{ev.total_reported_loss_inr?.toLocaleString('en-IN')}
+                  </Row>
+                ) : null}
+                {isVerified && ev.business_name ? (
+                  <Row label="Entity">
+                    {ev.business_name} {ev.category ? `(${ev.category})` : ''}
+                  </Row>
+                ) : null}
+                {hasReports ? (
+                  <Row label={get(lang, 'evidence')}>
+                    <ul className="space-y-1.5 text-left text-xs">
+                      {reports.slice(0, 5).map((item, i) => (
+                        <li key={i} className="rounded bg-slate-50 p-1.5 border border-slate-100">
+                          <span className="font-semibold text-slate-800">{item.channel || 'Report'}</span>
+                          {item.scam_type ? <span className="ml-1 text-slate-600">• {item.scam_type}</span> : null}
+                          {item.pincode ? <span className="ml-1 text-slate-500">({item.pincode})</span> : null}
+                          <span className="ml-1 text-slate-400">• {fmtDate(item.occurred_at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </Row>
+                ) : null}
+              </>
+            );
+          }
+          return null;
+        })()}
       </dl>
 
       {verdict === KNOWN_SCAM || verdict === SUSPICIOUS ? (
