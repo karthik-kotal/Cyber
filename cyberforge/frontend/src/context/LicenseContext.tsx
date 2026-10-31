@@ -74,10 +74,15 @@ export function LicenseProvider({ children }: { children: React.ReactNode }): Re
 
   const recheck = useCallback(() => setProbe((v) => v + 1), []);
 
-  // Periodic re-check so an expiring license is noticed without a restart.
+  // Periodic re-check so an expiring license is noticed without a restart, and recheck on POV changes.
   useEffect(() => {
-    const id = window.setInterval(() => setProbe((v) => v + 1), 60_000);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(() => setProbe((v) => v + 1), 15_000);
+    const handleStorage = () => setProbe((v) => v + 1);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   const value = useMemo<LicenseContextValue>(

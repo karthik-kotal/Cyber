@@ -1,5 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getAdminDisputes,
   getAdminReports,
@@ -470,17 +469,13 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 p-4">
-                <h4 className="text-xs font-bold text-slate-800 mb-2">License Management Controls</h4>
-                <p className="text-xs text-slate-500 mb-3">
-                  To test license renewal or switch between presets without server restart, visit the dedicated license management screen.
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                <h4 className="text-xs font-bold text-slate-800 mb-1">License Security Policy</h4>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  {pov === 'demo'
+                    ? 'The judging sandbox is strictly constrained to a 5-minute evaluation period. When expired, the system locks and can be renewed by entering the master renewal key Gandadagudi.'
+                    : 'The production environment operates under a 365-day enterprise license validated cryptographically by the backend.'}
                 </p>
-                <Link
-                  to="/license"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500 transition"
-                >
-                  Open License Management Console →
-                </Link>
               </div>
             </div>
           )}

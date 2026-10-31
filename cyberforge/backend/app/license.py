@@ -88,7 +88,7 @@ class LicenseManager:
 # 1. Administrator / Production 365-day license manager
 license_manager = LicenseManager(default_days=365, default_licensee="Demo Bank")
 
-# 2. Demo User isolated 5-minute license manager
+# 2. Demo User isolated 5-minute license manager (cannot switch to 365 days)
 demo_license_manager = LicenseManager(default_days=0, default_licensee="Demo User")
 demo_license_manager.reset_short_demo(minutes=5, licensee="Demo User")
 
@@ -107,6 +107,8 @@ def _process_license_upload(target_manager: LicenseManager, payload: LicensePayl
         if payload.demo_type in ("short", "short_5m", "5m"):
             expires_at = (now + timedelta(minutes=5)).isoformat()
         elif payload.demo_type in ("long", "long_1y", "1y"):
+            if is_demo:
+                raise HTTPException(status_code=400, detail="Demo environment is strictly 5-minute evaluation only and cannot switch to 365 days.")
             expires_at = (now + timedelta(days=365)).isoformat()
         elif payload.demo_type in ("expired", "already_expired"):
             expires_at = (now - timedelta(minutes=1)).isoformat()
@@ -123,7 +125,8 @@ def _process_license_upload(target_manager: LicenseManager, payload: LicensePayl
         if raw_lower in ("gandadagudi", "gandhadagudi", "gandada gudi", "gandhada gudi"):
             now = datetime.now(timezone.utc)
             licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
-            expires_at = (now + timedelta(days=365 if not is_demo else 5)).isoformat()
+            # In Demo mode, Gandadagudi renews for 5 minutes; in Production, 365 days
+            expires_at = (now + timedelta(minutes=5 if is_demo else 0, days=0 if is_demo else 365)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.upper() in ("DEMO:SHORT_5M", "DEMO:5M", "SHORT_5M", "SHORT"):
             now = datetime.now(timezone.utc)
@@ -131,8 +134,10 @@ def _process_license_upload(target_manager: LicenseManager, payload: LicensePayl
             expires_at = (now + timedelta(minutes=5)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.upper() in ("DEMO:LONG_1Y", "DEMO:1Y", "LONG_1Y", "LONG"):
+            if is_demo:
+                raise HTTPException(status_code=400, detail="Demo environment is strictly 5-minute evaluation only and cannot switch to 365 days.")
             now = datetime.now(timezone.utc)
-            licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
+            licensee = payload.licensee or "Demo Bank"
             expires_at = (now + timedelta(days=365)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.upper() in ("DEMO:EXPIRED", "EXPIRED"):
@@ -162,6 +167,18 @@ def _process_license_upload(target_manager: LicenseManager, payload: LicensePayl
 
     if not licensee or not expires_at or not signature:
         raise HTTPException(status_code=400, detail="Invalid license key. Please check your renewal key.")
+
+    if is_demo:
+        # Enforce that demo license duration can never exceed 10 minutes
+        try:
+            exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            now_dt = datetime.now(timezone.utc)
+            if (exp_dt - now_dt).total_seconds() > 600:
+                # Cap strictly to 5 minutes
+                expires_at = (now_dt + timedelta(minutes=5)).isoformat()
+                signature = generate_license_signature(licensee, expires_at)
+        except Exception:
+            pass
 
     try:
         target_manager.set_license(licensee, expires_at, signature)

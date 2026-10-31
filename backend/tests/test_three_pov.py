@@ -238,3 +238,25 @@ def test_admin_dispute_approval_and_rejection_lifecycle():
     assert audit_resp.status_code == 200
     audit_items = audit_resp.json()
     assert any(a["challenge_id"] == challenge_id and a["action"] == "APPROVE" for a in audit_items)
+def test_demo_cannot_switch_to_365_days():
+    # Attempting to activate long license in demo mode must be rejected
+    resp = client.post(
+        "/api/license/activate",
+        json={"license_key": "DEMO:LONG_1Y"},
+        headers={"x-cyberforge-pov": "demo"}
+    )
+    assert resp.status_code == 400
+    assert "strictly 5-minute evaluation only" in resp.json()["detail"]
+
+
+def test_demo_gandadagudi_renews_for_5_minutes_not_365_days():
+    resp = client.post(
+        "/api/license/activate",
+        json={"license_key": "Gandadagudi"},
+        headers={"x-cyberforge-pov": "demo"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active"] is True
+    # Verify remaining seconds is ~300 (5 minutes), NOT 365 days (~31,536,000)
+    assert resp.json()["remaining_seconds"] <= 300
+    assert resp.json()["remaining_seconds"] > 250

@@ -1,13 +1,20 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useLicense } from '../context/LicenseContext';
+import { resetDemoLicense } from '../services/api';
 import { get, type Lang } from '../i18n/strings';
+import type { UserPOV } from '../types/api';
 
 export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
-  const { state, info, renew, recheck } = useLicense();
-  const [licenseKeyInput, setLicenseKeyInput] = useState('');
+  const currentPov = (localStorage.getItem('cyberforge_pov') || 'normal') as UserPOV;
+
+  // Normal users do not have a license page
+  if (currentPov === 'normal') {
+    return <Navigate to="/report" replace />;
+  }
+
+  const { state, info, recheck } = useLicense();
   const [busy, setBusy] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
   // Live countdown timer for license expiry
@@ -48,35 +55,22 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
     return () => clearInterval(interval);
   }, [info?.expires_at]);
 
-  async function handleActivate(keyToUse?: string): Promise<void> {
-    const targetKey = (keyToUse !== undefined ? keyToUse : licenseKeyInput).trim();
-    if (!targetKey) {
-      setErrorMessage('Please enter or select a license key to activate.');
-      return;
-    }
-
+  const handleRestartDemo = async () => {
     setBusy(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-
-    const err = await renew(targetKey);
-    setBusy(false);
-
-    if (err === null) {
-      setSuccessMessage('License successfully activated! Valid without server restart.');
-      setLicenseKeyInput('');
+    try {
+      await resetDemoLicense();
       recheck();
-    } else {
-      setErrorMessage(err.message || 'License activation failed. Please check key format.');
+    } finally {
+      setBusy(false);
     }
-  }
+  };
 
   let statusBadge: React.JSX.Element;
   switch (state) {
     case 'valid':
       statusBadge = (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-300">
-          <span aria-hidden="true">✅</span> {get(lang, 'licenseValid')}
+          <span aria-hidden="true">✓</span> {get(lang, 'licenseValid')}
         </span>
       );
       break;
@@ -97,14 +91,14 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
     case 'invalid':
       statusBadge = (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-800 border border-rose-300">
-          <span aria-hidden="true">❌</span> Invalid License
+          <span aria-hidden="true">⚠️</span> Invalid License
         </span>
       );
       break;
     case 'checking':
       statusBadge = (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-800 border border-slate-300">
-          <span aria-hidden="true">⏳</span> Checking License…
+          <span aria-hidden="true">⏳</span> Checking License...
         </span>
       );
       break;
@@ -120,35 +114,46 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
 
   return (
     <section className="space-y-6">
-      {/* Card 1: Active License Status */}
+      {/* Active License Status Card */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h2 className="text-lg font-bold text-slate-900">{get(lang, 'navLicense')} Status</h2>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">
+              {currentPov === 'demo' ? 'Demo Sandbox License' : 'Enterprise License Status'}
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {currentPov === 'demo'
+                ? 'Evaluation environment • Strictly 5-minute sandbox duration'
+                : 'Production environment • Backed by 365-day HMAC-SHA256 license'}
+            </p>
+          </div>
           {statusBadge}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm border-t border-slate-100 pt-3">
+        <div className="border-t border-slate-100 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           <div>
-            <span className="text-xs font-medium text-slate-500">Licensee / Organization</span>
-            <p className="font-semibold text-slate-800 mt-0.5">{info?.licensee || info?.license_hint || 'Demo Bank'}</p>
+            <span className="text-slate-500 block font-medium">Licensee / Organization</span>
+            <span className="font-bold text-slate-900 text-sm">
+              {info?.licensee || (currentPov === 'demo' ? 'Demo User' : 'Demo Bank')}
+            </span>
           </div>
+
           <div>
-            <span className="text-xs font-medium text-slate-500">Expiration Timestamp</span>
-            <p className="font-mono text-xs text-slate-800 mt-0.5 break-all">
+            <span className="text-slate-500 block font-medium">Expiration Timestamp</span>
+            <span className="font-mono text-slate-800 text-xs">
               {info?.expires_at ? new Date(info.expires_at).toLocaleString() : '—'}
-            </p>
+            </span>
           </div>
-          {timeLeft ? (
-            <div className="sm:col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-600">Remaining Time</span>
-              <span className={`text-xs font-bold font-mono ${state === 'expired' ? 'text-rose-600' : 'text-blue-600'}`}>
-                {timeLeft}
-              </span>
-            </div>
-          ) : null}
         </div>
 
-        <div className="flex justify-end">
+        <div className="rounded-xl bg-slate-50 p-3 border border-slate-100 flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-600">Remaining Time</span>
+          <span className="text-xs font-mono font-bold text-blue-700">
+            {timeLeft || 'Calculating...'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-end pt-1">
           <button
             type="button"
             onClick={recheck}
@@ -159,118 +164,30 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
         </div>
       </div>
 
-      {/* Card 2: Hackathon Demo Quick Switcher */}
-      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5 shadow-sm space-y-3">
-        <div>
-          <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-1.5">
-            <span>⚡</span> Quick Demo Switcher (Hackathon Judging)
-          </h3>
-          <p className="text-xs text-indigo-700 mt-0.5">
-            Switch between short (5-minute) and long (1-year) licenses live with zero server restarts.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => handleActivate('DEMO:SHORT_5M')}
-            className="flex flex-col items-start p-3 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50/80 hover:border-indigo-300 transition-colors text-left shadow-sm disabled:opacity-50"
-          >
-            <span className="text-xs font-bold text-indigo-900 flex items-center gap-1">
-              ⏱️ 5-Minute License
-            </span>
-            <span className="text-[11px] text-slate-500 mt-1">
-              Expires in 5 minutes for the live hackathon demo
-            </span>
-          </button>
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => handleActivate('DEMO:LONG_1Y')}
-            className="flex flex-col items-start p-3 bg-white border border-emerald-200 rounded-xl hover:bg-emerald-50/80 hover:border-emerald-300 transition-colors text-left shadow-sm disabled:opacity-50"
-          >
-            <span className="text-xs font-bold text-emerald-900 flex items-center gap-1">
-              🛡️ 1-Year Long License
-            </span>
-            <span className="text-[11px] text-slate-500 mt-1">
-              Restores full active status
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Card 3: Manual License Activation / Renewal Form */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-        <div>
-          <h3 className="text-base font-bold text-slate-900">Activate / Renew License Key</h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Enter your license key string (`licensee:expires_at:signature`) or JSON payload.
-          </p>
-        </div>
-
-        {successMessage ? (
-          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 font-medium flex items-center justify-between">
-            <span>✅ {successMessage}</span>
-            <button
-              type="button"
-              onClick={() => setSuccessMessage(null)}
-              className="text-emerald-700 hover:text-emerald-900 text-sm font-bold ml-2"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
-
-        {errorMessage ? (
-          <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800 font-medium flex items-center justify-between">
-            <span>❌ {errorMessage}</span>
-            <button
-              type="button"
-              onClick={() => setErrorMessage(null)}
-              className="text-rose-700 hover:text-rose-900 text-sm font-bold ml-2"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleActivate();
-          }}
-          className="space-y-3"
-        >
+      {/* Demo Actions (Only for Demo User, with NO 365-day switch) */}
+      {currentPov === 'demo' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm space-y-3">
           <div>
-            <label htmlFor="licenseKeyInput" className="block text-xs font-semibold text-slate-700 mb-1">
-              License Key
-            </label>
-            <textarea
-              id="licenseKeyInput"
-              rows={3}
-              value={licenseKeyInput}
-              onChange={(e) => setLicenseKeyInput(e.target.value)}
-              placeholder="Enter renewal key (e.g. Gandadagudi) or paste license key string"
-              className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-mono text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+            <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
+              <span>⏱️</span> Demo Timer Controls
+            </h3>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Demo evaluation is strictly constrained to 5 minutes. When expired, the system locks and can be renewed by entering <strong className="text-amber-950">Gandadagudi</strong>.
+            </p>
           </div>
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-[11px] text-slate-400">
-              Zero downtime: reloads dynamically in memory without restarting uvicorn.
-            </span>
+          <div className="pt-2">
             <button
-              type="submit"
-              disabled={busy || !licenseKeyInput.trim()}
-              className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+              type="button"
+              disabled={busy}
+              onClick={handleRestartDemo}
+              className="rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-50 transition shadow-sm"
             >
-              {busy ? 'Activating…' : 'Activate License'}
+              {busy ? 'Resetting...' : '⏱️ Restart 5-Minute Evaluation'}
             </button>
           </div>
-        </form>
-      </div>
+        </div>
+      )}
     </section>
   );
 }
