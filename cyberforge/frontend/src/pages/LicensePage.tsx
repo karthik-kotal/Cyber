@@ -170,7 +170,7 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           <button
             type="button"
             disabled={busy}
@@ -181,21 +181,7 @@ export function LicensePage({ lang }: { lang: Lang }): React.JSX.Element {
               ⏱️ 5-Minute License
             </span>
             <span className="text-[11px] text-slate-500 mt-1">
-              Expires 5 min from now for timer demo
-            </span>
-          </button>
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => handleActivate('DEMO:EXPIRED')}
-            className="flex flex-col items-start p-3 bg-white border border-rose-200 rounded-xl hover:bg-rose-50/80 hover:border-rose-300 transition-colors text-left shadow-sm disabled:opacity-50"
-          >
-            <span className="text-xs font-bold text-rose-900 flex items-center gap-1">
-              🔒 Instant Expired
-            </span>
-            <span className="text-[11px] text-slate-500 mt-1">
-              Immediately triggers lock screen
+              Expires in 5 minutes for the live hackathon demo
             </span>
           </button>
 
