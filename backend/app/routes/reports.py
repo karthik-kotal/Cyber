@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from app.database import get_db_connection
 from app.schemas import ReportCreate, ReportResponse
 from app.normalize import normalize_identifier, normalize_scam_type, InvalidIdentifierError
-from app.areas import is_valid_pincode, get_area_by_pincode
+from app.areas import is_valid_pincode, get_area_by_pincode, resolve_pincode_area
 from app.privacy import hash_reporter_id, hash_ip_prefix, compute_note_fingerprint
 from app.trust_engine import evaluate_trust
 from app.alert_engine import check_and_generate_alerts
@@ -44,7 +44,7 @@ def submit_report(payload: ReportCreate, request: Request):
     if pincode_clean:
         if not is_valid_pincode(pincode_clean):
             raise InvalidIdentifierError(f"Invalid area code / pincode '{payload.pincode}'")
-        area_info = get_area_by_pincode(pincode_clean)
+        area_info = resolve_pincode_area(pincode_clean)
 
     locality = payload.locality or (area_info["locality"] if area_info else None)
     city = payload.city or (area_info["city"] if area_info else None)

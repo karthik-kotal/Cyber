@@ -200,9 +200,30 @@ export interface MapPoint {
   lng: number;
 }
 
+export interface MapDiagnostic {
+  total_reports: number;
+  reports_with_valid_pincodes: number;
+  reports_with_recognized_areas: number;
+  reports_with_coordinates: number;
+  reports_in_clusters: number;
+  unmapped_reports_count: number;
+  unmapped_pincodes: string[];
+  exclusion_reasons: Record<string, number>;
+}
+
+export interface UnmappedAreaInfo {
+  pincode: string;
+  count: number;
+  locality?: string | null;
+  city?: string | null;
+  reason: string;
+}
+
 export interface MapResponse {
   clusters: MapPoint[];
   points?: MapPoint[] | null;
+  diagnostics?: MapDiagnostic | null;
+  unmapped?: UnmappedAreaInfo[] | null;
 }
 
 // ---------------------------------------------------------------------------

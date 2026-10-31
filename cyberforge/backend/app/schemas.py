@@ -83,9 +83,30 @@ class MapCluster(BaseModel):
     lng: float
 
 
+class MapDiagnostic(BaseModel):
+    total_reports: int = 0
+    reports_with_valid_pincodes: int = 0
+    reports_with_recognized_areas: int = 0
+    reports_with_coordinates: int = 0
+    reports_in_clusters: int = 0
+    unmapped_reports_count: int = 0
+    unmapped_pincodes: List[str] = Field(default_factory=list)
+    exclusion_reasons: Dict[str, int] = Field(default_factory=dict)
+
+
+class UnmappedAreaInfo(BaseModel):
+    pincode: str
+    count: int
+    locality: Optional[str] = None
+    city: Optional[str] = None
+    reason: str = "Coordinates not yet registered for this pincode"
+
+
 class MapResponse(BaseModel):
     clusters: List[MapCluster]
     points: Optional[List[Dict[str, Any]]] = None
+    diagnostics: Optional[MapDiagnostic] = None
+    unmapped: Optional[List[UnmappedAreaInfo]] = None
 
 
 # --- ALERT SCHEMAS ---
