@@ -1,12 +1,23 @@
 import base64
+import json
+import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from app.config import settings
 from app.database import get_db_connection
 from app.schemas import ReportCreate, ReportResponse
-from app.normalize import normalize_identifier, normalize_scam_type, mask_identifier, InvalidIdentifierError
+from app.normalize import (
+    normalize_identifier,
+    normalize_scam_type,
+    mask_identifier,
+    InvalidIdentifierError,
+    OFFICIAL_SCAM_TYPES,
+    SCAM_CATEGORIES,
+)
 from app.areas import is_valid_pincode, get_area_by_pincode, resolve_pincode_area
 from app.privacy import hash_reporter_id, hash_ip_prefix, compute_note_fingerprint
 from app.trust_engine import evaluate_trust
@@ -15,6 +26,12 @@ from app.evidence.hasher import hash_evidence_file
 from app.evidence.phash import compute_perceptual_hash
 from app.evidence.ocr import extract_ocr_text, compute_ocr_fingerprint
 from app.evidence.tx_matcher import extract_and_hash_tx_ref
+from app.evidence.manipulation import (
+    compute_sha256,
+    validate_evidence_image,
+    run_all_integrity_checks,
+    save_evidence_file,
+)
 
 
 router = APIRouter()
@@ -32,6 +49,33 @@ SUPPORTED_CATEGORIES = {
 }
 
 
+def derive_category_from_scam_type(st: str) -> str:
+    """Infers fallback channel category from specific scam type."""
+    st_low = st.lower()
+    if any(k in st_low for k in ("bank", "credit-card", "freeze", "account")):
+        return "BANK_ACCOUNT"
+    if "upi" in st_low or "qr" in st_low:
+        return "UPI"
+    if any(k in st_low for k in ("website", "spoofing", "kyc", "url")):
+        return "URL"
+    if any(k in st_low for k in ("email", "bec", "compromise")):
+        return "EMAIL"
+    if any(k in st_low for k in ("sms", "sim")):
+        return "SMS"
+    if "whatsapp" in st_low:
+        return "WHATSAPP"
+    if any(k in st_low for k in ("call", "phone", "police", "arrest", "support", "remote", "screen")):
+        return "PHONE"
+    return "OTHER"
+
+
+@router.get("/scam-categories")
+@router.get("/categories")
+def list_scam_categories():
+    """Returns all available scam categories with IDs, names, and descriptions."""
+    return list(SCAM_CATEGORIES.values())
+
+
 @router.post("/reports", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/report", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 def submit_report(payload: ReportCreate, request: Request):
@@ -42,19 +86,32 @@ def submit_report(payload: ReportCreate, request: Request):
     - 201 with {"report_id": "...", "case_id": "...", "merged": True/False}
     - 400 with {"error": "..."} on invalid identifier, area code, unsupported category, or time
     """
+    # Route database context if demo header present (e.g. in direct unit test calls)
+    pov = None
+    if hasattr(request, "headers") and request.headers:
+        pov = request.headers.get("x-cyberforge-pov")
+    if isinstance(pov, str) and pov.strip().lower() == "demo":
+        from app.database import set_active_db
+        set_active_db(settings.DEMO_DATABASE_PATH)
+
     raw_ident = payload.identifier_value or payload.identifier
     if not raw_ident:
         raise InvalidIdentifierError("Missing identifier_value")
 
     # 1. Category validation & determination
     category = None
+    derived_scam_type = None
     if payload.category:
-        clean_cat = payload.category.strip().upper()
-        if clean_cat not in SUPPORTED_CATEGORIES:
+        clean_cat = payload.category.strip()
+        if clean_cat.upper() in SUPPORTED_CATEGORIES:
+            category = clean_cat.upper()
+        elif clean_cat.lower().replace("_", "-").replace(" ", "-") in OFFICIAL_SCAM_TYPES:
+            derived_scam_type = clean_cat.lower().replace("_", "-").replace(" ", "-")
+            category = derive_category_from_scam_type(derived_scam_type)
+        else:
             raise InvalidIdentifierError(
                 f"Unsupported report category: '{payload.category}'. Supported categories are: {', '.join(sorted(SUPPORTED_CATEGORIES))}"
             )
-        category = clean_cat
     elif payload.channel and payload.channel.strip().upper() in SUPPORTED_CATEGORIES:
         category = payload.channel.strip().upper()
     elif payload.identifier_type:
@@ -114,6 +171,8 @@ def submit_report(payload: ReportCreate, request: Request):
     # 3. Scam Type derivation (never default valid categories to "other")
     if payload.scam_type:
         scam_type = normalize_scam_type(payload.scam_type)
+    elif derived_scam_type:
+        scam_type = derived_scam_type
     else:
         category_default_scam_type = {
             "BANK_ACCOUNT": "bank-fraud",
@@ -170,16 +229,31 @@ def submit_report(payload: ReportCreate, request: Request):
     raw_ip_prefix = payload.ip_prefix or (request.client.host if request.client else "unknown_ip")
     ip_prefix_hmac = hash_ip_prefix(raw_ip_prefix)
 
-    note_fp = compute_note_fingerprint(payload.note)
+    # Validate and sanitize description (max 2,000 chars, XSS-cleaned)
+    desc_raw = (payload.description or payload.note or "").strip()
+    if len(desc_raw) > 2000:
+        raise HTTPException(
+            status_code=400,
+            detail="Description exceeds maximum length of 2,000 characters."
+        )
+    cleaned_desc = re.sub(r"<[^>]*?>", "", desc_raw).strip() if desc_raw else None
+    note_val = cleaned_desc or payload.note
+    note_fp = compute_note_fingerprint(note_val)
     report_id = payload.report_id or str(uuid.uuid4())
     loss_amount = payload.amount_lost_inr or payload.loss_amount or 0.0
 
-    # 8. Optional Evidence File Processing
+    # 8. Optional Evidence File Processing with Image Manipulation Checks & SHA-256
     file_sha256 = None
     phash_val = None
     ocr_fp = None
     mime_type = "unknown"
     file_size = 0
+    evidence_id = None
+    saved_filename = None
+    full_storage_path = None
+    integrity_results = None
+    has_screenshot = 1 if payload.has_screenshot else 0
+    is_demo = request.headers.get("x-cyberforge-pov", "").strip().lower() == "demo"
 
     if payload.evidence_base64 is not None:
         raw_b64 = payload.evidence_base64.strip()
@@ -195,19 +269,40 @@ def submit_report(payload: ReportCreate, request: Request):
         if len(evidence_bytes) == 0:
             raise HTTPException(status_code=400, detail="Uploaded evidence file is empty")
 
-        val_res = hash_evidence_file(evidence_bytes)
-        if not val_res.is_valid:
-            raise HTTPException(status_code=400, detail=val_res.error_message)
+        # Validate allowed format (JPG, JPEG, PNG, WEBP), max 5 MB, and magic bytes
+        is_val, err_msg, detected_fmt = validate_evidence_image(
+            evidence_bytes,
+            claimed_filename=payload.evidence_filename,
+            max_size_bytes=5 * 1024 * 1024
+        )
+        if not is_val:
+            raise HTTPException(status_code=400, detail=err_msg)
 
-        file_sha256 = val_res.file_sha256
-        mime_type = val_res.mime_type
-        file_size = val_res.file_size_bytes
+        # Immediate raw byte SHA-256 calculation before transformation
+        file_sha256 = compute_sha256(evidence_bytes)
+        file_size = len(evidence_bytes)
+        mime_type = f"image/{detected_fmt}" if detected_fmt else "image/jpeg"
+        has_screenshot = 1
 
-        if mime_type.startswith("image/"):
-            phash_val = compute_perceptual_hash(evidence_bytes)
-            ocr_text = extract_ocr_text(evidence_bytes)
-            if ocr_text:
-                ocr_fp = compute_ocr_fingerprint(ocr_text)
+        # Run automated manipulation integrity checks
+        integrity_results = run_all_integrity_checks(
+            evidence_bytes,
+            claimed_filename=payload.evidence_filename or f"evidence.{detected_fmt}",
+            claimed_mime=mime_type
+        )
+
+        # Securely store file in isolated directory (demo vs production)
+        evidence_id, saved_filename, full_storage_path = save_evidence_file(
+            evidence_bytes,
+            original_filename=payload.evidence_filename,
+            is_demo=is_demo
+        )
+
+        # Compute perceptual hash and OCR fingerprint for duplicate detection & clustering
+        phash_val = compute_perceptual_hash(evidence_bytes)
+        ocr_text = extract_ocr_text(evidence_bytes)
+        if ocr_text:
+            ocr_fp = compute_ocr_fingerprint(ocr_text)
 
     # 9. Optional Transaction Reference Processing
     tx_extracted = extract_and_hash_tx_ref(payload.transaction_ref)
@@ -231,15 +326,21 @@ def submit_report(payload: ReportCreate, request: Request):
                 cur.execute("SELECT COUNT(*) FROM evidence WHERE file_sha256 = ?", (file_sha256,))
                 if cur.fetchone()[0] > 0:
                     evidence_duplicate_detected = True
-                ev_id = str(uuid.uuid4())
+                if not evidence_id:
+                    evidence_id = str(uuid.uuid4())
                 conn.execute(
                     """
                     INSERT INTO evidence (
                         id, report_id, identifier, file_sha256, phash, ocr_fingerprint,
-                        file_size, mime_type, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        file_size, mime_type, filename, original_filename, storage_path,
+                        integrity_results, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (ev_id, report_id, normalized_id, file_sha256, phash_val, ocr_fp, file_size, mime_type, now_iso)
+                    (
+                        evidence_id, report_id, normalized_id, file_sha256, phash_val, ocr_fp,
+                        file_size, mime_type, saved_filename, payload.evidence_filename or saved_filename,
+                        full_storage_path, json.dumps(integrity_results) if integrity_results else None, now_iso
+                    )
                 )
 
             # Store transaction reference record if present
@@ -268,23 +369,23 @@ def submit_report(payload: ReportCreate, request: Request):
             )
             is_challenged = cur.fetchone()[0] > 0
 
-            # Insert report into reports table (including category)
+            # Insert report into reports table (including description, evidence_id, category)
             conn.execute(
                 """
                 INSERT INTO reports (
                     id, identifier, identifier_type, channel, category, scam_type,
                     occurred_at, reported_at, reporter_id, reporter_hmac,
                     ip_prefix, ip_prefix_hmac, pincode, locality, city,
-                    note, note_fingerprint, has_screenshot, amount_lost_inr,
+                    note, description, evidence_id, note_fingerprint, has_screenshot, amount_lost_inr,
                     loss_amount, evidence_url, file_sha256, phash, tx_ref_hmac,
                     ocr_fingerprint, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', ?)
                 """,
                 (
                     report_id, normalized_id, id_type, channel, category, scam_type,
                     occurred_at_str, reported_at_str, raw_reporter, reporter_hmac,
                     raw_ip_prefix, ip_prefix_hmac, pincode_clean, locality, city,
-                    payload.note, note_fp, 1 if payload.has_screenshot else 0, loss_amount,
+                    note_val, cleaned_desc, evidence_id, note_fp, has_screenshot, loss_amount,
                     loss_amount, payload.evidence_url, file_sha256, phash_val, tx_ref_hmac,
                     ocr_fp, now_iso
                 )
@@ -363,8 +464,69 @@ def submit_report(payload: ReportCreate, request: Request):
         distinct_reporters=distinct_reps,
         display_value=mask_identifier(normalized_id, id_type),
         created_at=now_iso,
+        description=cleaned_desc,
+        has_screenshot=bool(has_screenshot),
+        evidence_id=evidence_id,
         message="Report submitted successfully and verified against trust engine",
         evidence_duplicate_detected=evidence_duplicate_detected,
         tx_ref_duplicate_detected=tx_ref_duplicate_detected,
         similarity_risk_signals=evidence_summary
     )
+
+
+@router.get("/reports/{report_id}")
+def get_report_detail(report_id: str, request: Request):
+    """
+    GET /reports/{report_id}
+    Retrieves public report detail for Normal User / reporter.
+    Masks reporter identifier and sensitive data.
+    Does NOT leak admin integrity check results.
+    """
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, identifier, identifier_type, channel, category, scam_type,
+                   occurred_at, reported_at, pincode, locality, city, note,
+                   description, has_screenshot, evidence_id, file_sha256,
+                   amount_lost_inr, status, is_disputed, created_at
+            FROM reports
+            WHERE id = ?
+            """,
+            (report_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Report not found.")
+        item = dict(row)
+        item["display_value"] = mask_identifier(item["identifier"], item["identifier_type"])
+        item["description"] = item["description"] or item["note"]
+        return item
+
+
+@router.get("/reports/{report_id}/image")
+def get_report_image(report_id: str, request: Request):
+    """
+    GET /reports/{report_id}/image
+    Allows viewing the report evidence screenshot.
+    """
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT e.filename, e.storage_path, e.mime_type
+            FROM evidence e
+            WHERE e.report_id = ? OR e.id = (SELECT evidence_id FROM reports WHERE id = ?)
+            ORDER BY e.created_at DESC LIMIT 1
+            """,
+            (report_id, report_id)
+        )
+        row = cur.fetchone()
+        if not row or not row["storage_path"]:
+            raise HTTPException(status_code=404, detail="No image found for this report.")
+
+        clean_path = os.path.abspath(row["storage_path"])
+        if not os.path.exists(clean_path):
+            raise HTTPException(status_code=404, detail="Evidence image file not found on disk.")
+
+        return FileResponse(clean_path, media_type=row["mime_type"] or "image/jpeg", filename=row["filename"])

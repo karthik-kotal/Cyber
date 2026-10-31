@@ -27,6 +27,8 @@ import type {
   DisputeDecisionRequest,
   DisputeDecisionResponse,
   DisputeAuditLogItem,
+  ScamCategoryItem,
+  HashComparisonResponse,
 } from '../types/api';
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,9 @@ export const ENDPOINTS = {
   demoLicenseStatus: '/api/demo/license/status',
   demoLicenseReset: '/api/demo/license/reset',
   demoLicenseActivate: '/api/demo/license/activate',
+  scamCategories: '/api/scam-categories',
+  adminEvidence: (id: string) => '/api/admin/reports/' + encodeURIComponent(id) + '/evidence',
+  compareHashes: '/api/admin/evidence/compare-hashes',
 } as const;
 
 export function apiBaseUrl(): string {
@@ -334,5 +339,22 @@ export function resetDemoLicense(options?: RequestOptions): Promise<LicenseRespo
   return jsonFetch<LicenseResponse>(ENDPOINTS.demoLicenseReset, {
     ...options,
     method: 'POST',
+  });
+}
+
+
+export function getScamCategories(options?: RequestOptions): Promise<ScamCategoryItem[]> {
+  return jsonFetch<ScamCategoryItem[]>(ENDPOINTS.scamCategories, options);
+}
+
+export function getAdminReportEvidence(reportId: string, options?: RequestOptions): Promise<any> {
+  return jsonFetch<any>(ENDPOINTS.adminEvidence(reportId), options);
+}
+
+export function compareHashes(hashA: string, hashB: string, options?: RequestOptions): Promise<HashComparisonResponse> {
+  return jsonFetch<HashComparisonResponse>(ENDPOINTS.compareHashes, {
+    ...options,
+    method: 'POST',
+    body: { hash_a: hashA, hash_b: hashB },
   });
 }

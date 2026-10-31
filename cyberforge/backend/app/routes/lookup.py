@@ -118,7 +118,8 @@ def lookup_identifier(
             """
             SELECT id, reporter_hmac, ip_prefix_hmac, note_fingerprint, status, occurred_at,
                    scam_type, channel, pincode, amount_lost_inr, loss_amount, file_sha256,
-                   phash, tx_ref_hmac, ocr_fingerprint, created_at, is_disputed, dispute_reason
+                   phash, tx_ref_hmac, ocr_fingerprint, created_at, is_disputed, dispute_reason,
+                   description, note, has_screenshot
             FROM reports WHERE identifier = ? AND status = 'ACCEPTED'
             ORDER BY occurred_at ASC
             """,
@@ -138,7 +139,7 @@ def lookup_identifier(
                 distinct_reporters=0,
                 first_seen=reports[0]["occurred_at"] if reports else None,
                 last_seen=reports[-1]["occurred_at"] if reports else None,
-                scam_type=None,
+                scam_type=reports[-1]["scam_type"] if reports else None,
                 display_value=verified_biz["raw_value"] or normalized_id,
                 evidence={
                     "verified": True,
@@ -157,7 +158,7 @@ def lookup_identifier(
                 distinct_reporters=0,
                 first_seen=None,
                 last_seen=None,
-                scam_type=None,
+                scam_type=reports[-1]["scam_type"] if reports else None,
                 display_value=mask_identifier(normalized_id, id_type),
                 evidence={
                     "verified": False,
@@ -196,6 +197,7 @@ def lookup_identifier(
                 "is_disputed": bool(r.get("is_disputed")),
                 "dispute_status": "DISPUTED" if r.get("is_disputed") else None,
                 "dispute_reason": r.get("dispute_reason") if r.get("is_disputed") else None,
+                "has_screenshot": bool(r.get("has_screenshot")),
             }
             for r in reports
         ]

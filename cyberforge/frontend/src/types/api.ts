@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Official API contract types for the Community Scam Map project.
  *
  * These types mirror Developer A's and Developer B's backend schemas in
@@ -80,6 +80,8 @@ export interface EvidenceItem {
   is_disputed?: boolean;
   dispute_status?: string | null;
   dispute_reason?: string | null;
+  description?: string | null;
+  has_screenshot?: boolean | null;
 }
 
 /** Evidence summary object returned for non-verified, non-empty lookups. */
@@ -138,6 +140,7 @@ export interface ReportPayload {
   locality?: string | null;
   city?: string | null;
   note?: string | null;
+  description?: string | null;
   scam_type?: string | null;
   occurred_at?: string | null;
   reported_at?: string | null;
@@ -216,6 +219,68 @@ export interface AdminLoginResponse {
   license_status: LicenseResponse;
 }
 
+export interface EvidenceMetadata {
+  evidence_id: string;
+  file_sha256?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
+  filename?: string | null;
+  original_filename?: string | null;
+  integrity_results?: {
+    sha256_hash: string;
+    analyzed_at: string;
+    overall_status: string;
+    overall_summary: string;
+    risk_score: number;
+    flagged_anomalies: string[];
+    disclaimer: string;
+    checks: {
+      crop: {
+        status: string;
+        is_standard: boolean;
+        width: number;
+        height: number;
+        aspect_ratio: number;
+        explanation: string;
+        disclaimer: string;
+      };
+      brightness: {
+        status: string;
+        average_luminance: number;
+        std_dev: number;
+        clipped_shadows_ratio: number;
+        clipped_highlights_ratio: number;
+        explanation: string;
+        disclaimer: string;
+      };
+      watermark: {
+        status: string;
+        detected: boolean;
+        location: string;
+        explanation: string;
+        disclaimer: string;
+      };
+      text: {
+        status: string;
+        extracted_text?: string | null;
+        text_detected: boolean;
+        anomalies: string[];
+        disclaimer: string;
+      };
+      format: {
+        format_matches: boolean;
+        format_status: string;
+        actual_format: string;
+        claimed_extension: string;
+        software_tag: string;
+        editor_detected: boolean;
+        metadata_note: string;
+      };
+    };
+  } | null;
+  image_url?: string | null;
+}
+
 export interface AdminReportItem {
   id: string;
   identifier: string;
@@ -229,7 +294,28 @@ export interface AdminReportItem {
   amount_lost_inr: number;
   pincode?: string | null;
   city?: string | null;
+  note?: string | null;
+  description?: string | null;
+  has_screenshot?: number | boolean | null;
+  evidence_id?: string | null;
+  file_sha256?: string | null;
+  evidence_metadata?: EvidenceMetadata | null;
   created_at: string;
+}
+
+export interface ScamCategoryItem {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface HashComparisonResponse {
+  match: boolean;
+  status: string;
+  summary: string;
+  explanation?: string;
+  hash_a: string;
+  hash_b: string;
 }
 
 export interface AdminDisputeItem {

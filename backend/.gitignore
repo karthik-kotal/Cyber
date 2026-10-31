@@ -10,3 +10,8 @@ htmlcov/
 .env
 .venv/
 env/
+
+data/evidence/*
+!data/evidence/.gitkeep
+!data/evidence/demo/.gitkeep
+!data/evidence/prod/.gitkeep

@@ -24,6 +24,7 @@ class ReportCreate(BaseModel):
     locality: Optional[str] = Field(None, description="Locality name")
     city: Optional[str] = Field(None, description="City name")
     note: Optional[str] = Field(None, description="Report description")
+    description: Optional[str] = Field(None, description="Detailed description of what happened (max 2000 chars)")
     has_screenshot: Optional[bool] = Field(False, description="Whether screenshot was attached")
     amount_lost_inr: Optional[float] = Field(0.0, description="Financial loss in INR")
     loss_amount: Optional[float] = Field(None, description="Alias for amount_lost_inr")
@@ -47,6 +48,9 @@ class ReportResponse(BaseModel):
     display_value: Optional[str] = None
     message: Optional[str] = None
     created_at: Optional[str] = None
+    description: Optional[str] = None
+    has_screenshot: Optional[bool] = False
+    evidence_id: Optional[str] = None
     evidence_duplicate_detected: Optional[bool] = False
     tx_ref_duplicate_detected: Optional[bool] = False
     similarity_risk_signals: Optional[Dict[str, Any]] = None

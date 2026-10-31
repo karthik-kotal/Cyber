@@ -1,7 +1,10 @@
-﻿import uuid
+import os
+import json
+import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Header, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from app.config import settings
 from app.database import get_db_connection
@@ -9,6 +12,7 @@ from app.schemas import AdminResetResponse
 from app.verified import APPENDIX_C_VERIFIED
 from app.license import license_manager
 from app.trust_engine import evaluate_trust
+from app.evidence.manipulation import compare_hashes
 
 
 router = APIRouter()
@@ -43,14 +47,14 @@ def require_admin_auth(
     In Production/Administrator POV, requires valid ADMIN_TOKEN.
     Normal users receive 401 Unauthorized.
     """
-    if x_cyberforge_pov and x_cyberforge_pov.strip().lower() == "demo":
+    if isinstance(x_cyberforge_pov, str) and x_cyberforge_pov.strip().lower() == "demo":
         return "demo-admin"
 
     token = None
-    if authorization and authorization.startswith("Bearer "):
+    if isinstance(authorization, str) and authorization.startswith("Bearer "):
         token = authorization.split("Bearer ", 1)[1].strip()
-    elif x_admin_token:
-        token = str(x_admin_token).strip()
+    elif isinstance(x_admin_token, str):
+        token = x_admin_token.strip()
 
     if not token or token != settings.ADMIN_TOKEN:
         raise HTTPException(
@@ -82,6 +86,11 @@ def admin_login(payload: AdminLoginRequest):
     )
 
 
+class CompareHashesRequest(BaseModel):
+    hash_a: str = Field(..., description="First SHA-256 hash")
+    hash_b: str = Field(..., description="Second SHA-256 hash to compare against")
+
+
 @router.get("/admin/reports")
 def list_admin_reports(
     x_admin_token: Optional[str] = Header(None),
@@ -95,15 +104,121 @@ def list_admin_reports(
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, identifier, identifier_type, category, scam_type, occurred_at,
-                   status, is_disputed, dispute_reason, amount_lost_inr, pincode, city, created_at
-            FROM reports
-            ORDER BY created_at DESC
+            SELECT r.id, r.identifier, r.identifier_type, r.category, r.scam_type, r.occurred_at,
+                   r.status, r.is_disputed, r.dispute_reason, r.amount_lost_inr, r.pincode, r.city,
+                   r.note, r.description, r.has_screenshot, r.evidence_id, r.file_sha256, r.created_at,
+                   e.id AS ev_id, e.file_size, e.mime_type, e.filename, e.original_filename, e.integrity_results
+            FROM reports r
+            LEFT JOIN evidence e ON (r.evidence_id = e.id OR (r.evidence_id IS NULL AND r.id = e.report_id))
+            ORDER BY r.created_at DESC
             LIMIT 200
             """
         )
         rows = cur.fetchall()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            item = dict(r)
+            item["description"] = item["description"] or item["note"]
+            if item.get("ev_id"):
+                item["evidence_metadata"] = {
+                    "evidence_id": item["ev_id"],
+                    "file_sha256": item.get("file_sha256"),
+                    "file_size": item.get("file_size"),
+                    "mime_type": item.get("mime_type"),
+                    "filename": item.get("filename"),
+                    "original_filename": item.get("original_filename"),
+                    "integrity_results": json.loads(item["integrity_results"]) if item.get("integrity_results") else None,
+                    "image_url": f"/api/admin/evidence/{item['ev_id']}/file",
+                }
+            else:
+                item["evidence_metadata"] = None
+            results.append(item)
+        return results
+
+
+@router.get("/admin/reports/{report_id}/evidence")
+def get_admin_report_evidence(
+    report_id: str,
+    x_admin_token: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+    x_cyberforge_pov: Optional[str] = Header(None)
+):
+    """
+    Returns full evidence inspection details and automated manipulation check findings.
+    Requires administrator authorization.
+    """
+    require_admin_auth(x_admin_token, authorization, x_cyberforge_pov)
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, report_id, identifier, file_sha256, phash, ocr_fingerprint,
+                   file_size, mime_type, filename, original_filename, storage_path,
+                   integrity_results, created_at
+            FROM evidence
+            WHERE report_id = ? OR id = ?
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (report_id, report_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="No evidence record found for this report.")
+
+        item = dict(row)
+        if item.get("integrity_results"):
+            try:
+                item["integrity_results"] = json.loads(item["integrity_results"])
+            except Exception:
+                pass
+        item["image_url"] = f"/api/admin/evidence/{item['id']}/file"
+        return item
+
+
+@router.get("/admin/evidence/{evidence_id}/file")
+def get_admin_evidence_file(
+    evidence_id: str,
+    x_admin_token: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+    x_cyberforge_pov: Optional[str] = Header(None)
+):
+    """
+    Securely serves the evidence image file to authorized administrators.
+    Path traversal strictly prevented.
+    """
+    require_admin_auth(x_admin_token, authorization, x_cyberforge_pov)
+
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT filename, storage_path, mime_type FROM evidence WHERE id = ?", (evidence_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Evidence file record not found.")
+
+        storage_path = row["storage_path"]
+        mime_type = row["mime_type"] or "image/jpeg"
+
+        clean_path = os.path.abspath(storage_path)
+        if not os.path.exists(clean_path):
+            raise HTTPException(status_code=404, detail="Evidence file not found on disk.")
+
+        return FileResponse(clean_path, media_type=mime_type, filename=row["filename"])
+
+
+@router.post("/admin/evidence/compare-hashes")
+def compare_admin_evidence_hashes(
+    payload: CompareHashesRequest,
+    x_admin_token: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+    x_cyberforge_pov: Optional[str] = Header(None)
+):
+    """
+    Compares two SHA-256 hashes and provides clear, honest tampering disclaimers.
+    Requires administrator authorization.
+    """
+    require_admin_auth(x_admin_token, authorization, x_cyberforge_pov)
+    return compare_hashes(payload.hash_a, payload.hash_b)
 
 
 @router.get("/admin/disputes")

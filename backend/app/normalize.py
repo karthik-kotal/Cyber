@@ -56,6 +56,7 @@ TRACKING_PARAMS = {
 
 # Official Scam Types from Appendix C + new standardized category scam types
 OFFICIAL_SCAM_TYPES = {
+    # Original 17 categories:
     "digital-arrest",
     "fake-kyc-link",
     "upi-refund-qr",
@@ -73,6 +74,265 @@ OFFICIAL_SCAM_TYPES = {
     "phone-scam",
     "sms-fraud",
     "phishing",
+
+    # 28 New Categories:
+    "bank-account-freeze",
+    "credit-card-fraud",
+    "upi-collect-request",
+    "screen-sharing-scam",
+    "remote-access-scam",
+    "fake-police-notice",
+    "social-media-hack",
+    "account-takeover",
+    "sim-swap",
+    "phishing-email",
+    "sms-phishing",
+    "fake-charity",
+    "insurance-scam",
+    "property-scam",
+    "travel-booking-scam",
+    "crypto-investment",
+    "deepfake-scam",
+    "relationship-scam",
+    "impersonation-scam",
+    "fake-government-scheme",
+    "website-spoofing",
+    "qr-payment-scam",
+    "business-email-compromise",
+    "refund-scam",
+    "delivery-fee-scam",
+    "fake-support-scam",
+    "data-theft",
+    "identity-theft",
+}
+
+# Rich category dictionary with human-readable labels and descriptions
+SCAM_CATEGORIES = {
+    "digital-arrest": {
+        "id": "digital-arrest",
+        "name": "Digital Arrest",
+        "description": "Video call intimidation by fake law enforcement claiming illegal parcels or money laundering.",
+    },
+    "fake-kyc-link": {
+        "id": "fake-kyc-link",
+        "name": "Fake KYC Link",
+        "description": "Phishing link urging urgent bank, SIM, or wallet KYC update to prevent blocking.",
+    },
+    "upi-refund-qr": {
+        "id": "upi-refund-qr",
+        "name": "UPI Refund QR",
+        "description": "Scammer sends a collect request or QR code claiming it will credit money to you.",
+    },
+    "investment-group": {
+        "id": "investment-group",
+        "name": "Investment Group Scam",
+        "description": "Fake WhatsApp/Telegram groups offering guaranteed astronomical returns on stocks or crypto.",
+    },
+    "courier-customs": {
+        "id": "courier-customs",
+        "name": "Courier & Customs Parcel",
+        "description": "Call or SMS stating a parcel contains contraband and demanding clearance penalties.",
+    },
+    "job-offer": {
+        "id": "job-offer",
+        "name": "Job / Task Scam",
+        "description": "Part-time rating, YouTube liking, or typing jobs requiring upfront security deposits.",
+    },
+    "lottery-prize": {
+        "id": "lottery-prize",
+        "name": "Lottery / Prize Fraud",
+        "description": "Fake notifications claiming a big lottery win requiring advance processing fees.",
+    },
+    "loan-app-harassment": {
+        "id": "loan-app-harassment",
+        "name": "Predatory Loan App",
+        "description": "Illegal instant loan apps that harvest phone contacts and extort users.",
+    },
+    "electricity-disconnection": {
+        "id": "electricity-disconnection",
+        "name": "Electricity Disconnection",
+        "description": "Urgent SMS claiming power will be cut tonight unless you call a fake officer.",
+    },
+    "fake-customer-care": {
+        "id": "fake-customer-care",
+        "name": "Fake Customer Care",
+        "description": "Scam helpline numbers planted on search engines pretending to be bank or airline support.",
+    },
+    "otp-call": {
+        "id": "otp-call",
+        "name": "OTP Harvesting Call",
+        "description": "Callers pretending to be bank staff tricking victims into revealing one-time passwords.",
+    },
+    "sextortion": {
+        "id": "sextortion",
+        "name": "Sextortion / Video Call Blackmail",
+        "description": "Unsolicited video call followed by morphed footage and extortion threats.",
+    },
+    "bank-fraud": {
+        "id": "bank-fraud",
+        "name": "Bank Account Fraud",
+        "description": "Unauthorized bank debits, net banking account takeover, or card skim.",
+    },
+    "whatsapp-scam": {
+        "id": "whatsapp-scam",
+        "name": "WhatsApp Scam",
+        "description": "Scam messages, links, or impersonation attempts received via WhatsApp.",
+    },
+    "phone-scam": {
+        "id": "phone-scam",
+        "name": "Phone Call Scam",
+        "description": "Fraudulent phone calls claiming emergency, legal action, or fake service issues.",
+    },
+    "sms-fraud": {
+        "id": "sms-fraud",
+        "name": "SMS Fraud",
+        "description": "Smishing messages containing deceptive links or urgent malicious instructions.",
+    },
+    "phishing": {
+        "id": "phishing",
+        "name": "Phishing",
+        "description": "Deceptive websites or messages crafted to harvest login credentials and sensitive data.",
+    },
+    "bank-account-freeze": {
+        "id": "bank-account-freeze",
+        "name": "Bank Account Freeze",
+        "description": "Fake bank message claiming your account will be blocked unless you verify details",
+    },
+    "credit-card-fraud": {
+        "id": "credit-card-fraud",
+        "name": "Credit Card Fraud",
+        "description": "Fake credit card offers or messages asking for card details",
+    },
+    "upi-collect-request": {
+        "id": "upi-collect-request",
+        "name": "UPI Collect Request",
+        "description": "Fraudulent UPI collect request asking you to approve a payment",
+    },
+    "screen-sharing-scam": {
+        "id": "screen-sharing-scam",
+        "name": "Screen Sharing Scam",
+        "description": "Scammer asks you to install an app or share your screen to steal banking information",
+    },
+    "remote-access-scam": {
+        "id": "remote-access-scam",
+        "name": "Remote Access Scam",
+        "description": "Fake support agent asks you to install remote access software",
+    },
+    "fake-police-notice": {
+        "id": "fake-police-notice",
+        "name": "Fake Police Notice",
+        "description": "Fake police or government notice demanding money to avoid legal action",
+    },
+    "social-media-hack": {
+        "id": "social-media-hack",
+        "name": "Social Media Hack",
+        "description": "Fake account recovery message or link used to steal social media credentials",
+    },
+    "account-takeover": {
+        "id": "account-takeover",
+        "name": "Account Takeover",
+        "description": "Scammer steals login credentials to access and control an account",
+    },
+    "sim-swap": {
+        "id": "sim-swap",
+        "name": "SIM Swap",
+        "description": "Fraudster obtains control of your phone number to intercept OTPs",
+    },
+    "phishing-email": {
+        "id": "phishing-email",
+        "name": "Phishing Email",
+        "description": "Fraudulent email designed to steal passwords, banking details, or personal information",
+    },
+    "sms-phishing": {
+        "id": "sms-phishing",
+        "name": "SMS Phishing",
+        "description": "Fake SMS containing malicious links or requests for sensitive information",
+    },
+    "fake-charity": {
+        "id": "fake-charity",
+        "name": "Fake Charity",
+        "description": "Fraudulent donation request pretending to support a charity or emergency",
+    },
+    "insurance-scam": {
+        "id": "insurance-scam",
+        "name": "Insurance Scam",
+        "description": "Fake insurance policy, claim, or renewal message demanding payment",
+    },
+    "property-scam": {
+        "id": "property-scam",
+        "name": "Property Scam",
+        "description": "Fake rental or property listing asking for advance payment",
+    },
+    "travel-booking-scam": {
+        "id": "travel-booking-scam",
+        "name": "Travel Booking Scam",
+        "description": "Fake hotel, flight, or travel booking asking for payment",
+    },
+    "crypto-investment": {
+        "id": "crypto-investment",
+        "name": "Crypto Investment",
+        "description": "Fake cryptocurrency investment promising guaranteed profits",
+    },
+    "deepfake-scam": {
+        "id": "deepfake-scam",
+        "name": "Deepfake Scam",
+        "description": "AI-generated voice or video impersonation used to deceive victims",
+    },
+    "relationship-scam": {
+        "id": "relationship-scam",
+        "name": "Relationship Scam",
+        "description": "Fake online relationship used to manipulate victims into sending money",
+    },
+    "impersonation-scam": {
+        "id": "impersonation-scam",
+        "name": "Impersonation Scam",
+        "description": "Scammer pretends to be a family member, friend, or trusted person asking for money",
+    },
+    "fake-government-scheme": {
+        "id": "fake-government-scheme",
+        "name": "Fake Government Scheme",
+        "description": "Fake government benefit, subsidy, or registration scheme asking for fees or personal details",
+    },
+    "website-spoofing": {
+        "id": "website-spoofing",
+        "name": "Website Spoofing",
+        "description": "Fake website designed to look like a legitimate bank, company, or government portal",
+    },
+    "qr-payment-scam": {
+        "id": "qr-payment-scam",
+        "name": "QR Payment Scam",
+        "description": "Fake payment QR code used to redirect payments to a scammer",
+    },
+    "business-email-compromise": {
+        "id": "business-email-compromise",
+        "name": "Business Email Compromise",
+        "description": "Fraudulent business email impersonating an employee or vendor to request payments",
+    },
+    "refund-scam": {
+        "id": "refund-scam",
+        "name": "Refund Scam",
+        "description": "Fake refund message or call asking for banking details or payment approval",
+    },
+    "delivery-fee-scam": {
+        "id": "delivery-fee-scam",
+        "name": "Delivery Fee Scam",
+        "description": "Fake delivery message demanding a small payment to release a parcel",
+    },
+    "fake-support-scam": {
+        "id": "fake-support-scam",
+        "name": "Fake Support Scam",
+        "description": "Fake technical support agent claiming your device or account has a problem",
+    },
+    "data-theft": {
+        "id": "data-theft",
+        "name": "Data Theft",
+        "description": "Scam designed to collect personal, financial, or identity information",
+    },
+    "identity-theft": {
+        "id": "identity-theft",
+        "name": "Identity Theft",
+        "description": "Stolen personal information used to impersonate someone or open accounts",
+    },
 }
 
 

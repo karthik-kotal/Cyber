@@ -163,6 +163,11 @@ export function LookupResultCard({
                                 Ref ID: {reportId}
                               </div>
                             ) : null}
+                            {item.description ? (
+                              <p className="mt-1 text-[11px] text-slate-700 bg-slate-50 p-2 rounded border border-slate-200 leading-relaxed whitespace-pre-wrap">
+                                {item.description}
+                              </p>
+                            ) : null}
                           </li>
                         );
                       })}

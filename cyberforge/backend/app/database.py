@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 import os
 import contextvars
 from contextlib import contextmanager
@@ -93,6 +93,8 @@ def init_db(db_path: str = None) -> None:
             ("locality", "TEXT"),
             ("city", "TEXT"),
             ("note", "TEXT"),
+            ("description", "TEXT"),
+            ("evidence_id", "TEXT"),
             ("has_screenshot", "INTEGER DEFAULT 0"),
             ("amount_lost_inr", "REAL DEFAULT 0"),
             ("file_sha256", "TEXT"),
@@ -126,9 +128,26 @@ def init_db(db_path: str = None) -> None:
             ocr_fingerprint TEXT,
             file_size INTEGER NOT NULL,
             mime_type TEXT NOT NULL,
+            filename TEXT,
+            original_filename TEXT,
+            storage_path TEXT,
+            integrity_results TEXT,
             created_at TEXT NOT NULL
         );
         """)
+        # Schema migration for evidence table
+        cur.execute("PRAGMA table_info(evidence);")
+        existing_ev_cols = {row[1] for row in cur.fetchall()}
+        new_ev_cols = [
+            ("filename", "TEXT"),
+            ("original_filename", "TEXT"),
+            ("storage_path", "TEXT"),
+            ("integrity_results", "TEXT"),
+        ]
+        for cname, ctype in new_ev_cols:
+            if cname not in existing_ev_cols:
+                conn.execute(f"ALTER TABLE evidence ADD COLUMN {cname} {ctype};")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_evidence_sha256 ON evidence(file_sha256);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_evidence_phash ON evidence(phash);")
 
