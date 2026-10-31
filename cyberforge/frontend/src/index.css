@@ -1,0 +1,57 @@
+/* CyberForge – Global stylesheet
+ * Must be imported first in main.tsx so Tailwind base/components/utilities
+ * are injected before any component-level styles.
+ */
+
+/* ── Inter web font (variable weight, loaded from Google Fonts) ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ── Tailwind directives ── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base resets & CyberForge design tokens ── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    /* Prevent font-size inflation on iOS */
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-100 text-slate-900 font-sans antialiased;
+    /* Prevent horizontal overflow on mobile */
+    overflow-x: hidden;
+  }
+
+  /* Focus rings: use Tailwind focus-visible utilities per element;
+     remove the UA default outline so custom rings are consistent. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-slate-900;
+  }
+
+  /* Remove default fieldset/legend browser chrome */
+  fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* ── Leaflet map container ── */
+@layer utilities {
+  .leaflet-container {
+    /* Ensure the Leaflet canvas respects the page font stack */
+    font-family: inherit;
+  }
+}
