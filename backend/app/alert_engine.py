@@ -30,13 +30,24 @@ def check_and_generate_alerts(
     alerts_generated = []
     cur = conn.cursor()
 
+    # 0. Verified businesses and official helplines NEVER trigger scam alerts
+    clean_id_no_spaces = identifier.replace(" ", "")
+    cur.execute(
+        "SELECT COUNT(*) FROM verified_businesses WHERE identifier = ? OR identifier = ?",
+        (identifier, clean_id_no_spaces)
+    )
+    if cur.fetchone()[0] > 0:
+        return []
+
     # 1. SPIKE Alert Check: Reports in last 24 hours for this PIN code
-    # Exclude disputed reports and require independent corroboration (at least 2 distinct reporters)
+    # Exclude disputed reports, verified businesses, and require independent corroboration (at least 2 distinct reporters)
     cur.execute(
         """
         SELECT COUNT(*), COUNT(DISTINCT reporter_hmac)
         FROM reports
-        WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
+        WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' 
+          AND (is_disputed IS NULL OR is_disputed = 0)
+          AND identifier NOT IN (SELECT identifier FROM verified_businesses)
         """,
         (clean_pin, window_24h)
     )
@@ -57,6 +68,7 @@ def check_and_generate_alerts(
                 """
                 SELECT scam_type, COUNT(*) as cnt FROM reports
                 WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED'
+                  AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                 GROUP BY scam_type ORDER BY cnt DESC LIMIT 1
                 """,
                 (clean_pin, window_24h)

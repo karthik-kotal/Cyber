@@ -42,6 +42,7 @@ def get_alerts(
                 """
                 SELECT DISTINCT pincode FROM reports
                 WHERE pincode IS NOT NULL AND occurred_at >= ? AND status = 'ACCEPTED'
+                  AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                 """,
                 (t_24h,)
             )
@@ -53,6 +54,7 @@ def get_alerts(
                 """
                 SELECT COUNT(*), COUNT(DISTINCT reporter_hmac) FROM reports
                 WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
+                  AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                 """,
                 (target_pin, t_24h)
             )
@@ -64,6 +66,7 @@ def get_alerts(
                 """
                 SELECT COUNT(*) FROM reports
                 WHERE pincode = ? AND occurred_at >= ? AND occurred_at < ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
+                  AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                 """,
                 (target_pin, t_8d, t_24h)
             )
@@ -75,6 +78,7 @@ def get_alerts(
                 """
                 SELECT scam_type, COUNT(*) as cnt FROM reports
                 WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
+                  AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                 GROUP BY scam_type ORDER BY cnt DESC LIMIT 1
                 """,
                 (target_pin, t_24h)
@@ -103,6 +107,7 @@ def get_alerts(
                 """
                 SELECT DISTINCT scam_type FROM reports
                 WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED'
+                  AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                 """,
                 (target_pin, t_24h)
             )
@@ -115,6 +120,7 @@ def get_alerts(
                     """
                     SELECT COUNT(*) FROM reports
                     WHERE pincode = ? AND scam_type = ? AND occurred_at >= ? AND occurred_at < ? AND status = 'ACCEPTED'
+                      AND identifier NOT IN (SELECT identifier FROM verified_businesses)
                     """,
                     (target_pin, stype, t_30d, t_24h)
                 )

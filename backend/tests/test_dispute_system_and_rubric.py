@@ -307,3 +307,27 @@ def test_false_reports_never_trigger_alerts():
     spike_alerts = [a for a in alerts_resp.alerts if a.type == "SPIKE" and a.pincode == pin]
     assert len(spike_alerts) == 0, "Spam from 1 single reporter must NOT trigger a SPIKE alert"
 
+
+def test_verified_businesses_never_trigger_alerts():
+    """Reports against verified businesses never generate SPIKE or NEW_TYPE alerts."""
+    bakery_number = "+91 80 4100 2233"  # Fresh Bakes (Appendix C verified)
+    pin = "560038"  # Indiranagar
+
+    # 10 different people report the verified bakery with novel and spike reports
+    for i in range(10):
+        submit_report(
+            ReportCreate(
+                category="PHONE",
+                identifier=bakery_number,
+                scam_type="digital-arrest",
+                reporter_id=f"adversary_{i}",
+                pincode=pin
+            ),
+            make_request(f"192.168.10.{i+1}")
+        )
+
+    alerts_resp = get_alerts(pincode=pin)
+    # Since only the verified business was reported, zero alerts should be triggered for this pincode
+    pin_alerts = [a for a in alerts_resp.alerts if a.pincode == pin]
+    assert len(pin_alerts) == 0, "Reports against verified business must NEVER trigger alerts in that pincode"
+
