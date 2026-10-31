@@ -1,12 +1,25 @@
-import sqlite3
+﻿import sqlite3
 import os
+import contextvars
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Optional
 from app.config import settings
 from app.verified import APPENDIX_C_VERIFIED
 
+# ContextVar to allow per-request database routing (e.g. for Demo isolation)
+_current_db_path: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("current_db_path", default=None)
+
+
+def set_active_db(db_path: Optional[str]) -> None:
+    """Sets the database path for the current async task / context."""
+    _current_db_path.set(db_path)
+
 
 def get_db_path() -> str:
+    """Returns the currently active database path (demo or production)."""
+    ctx_path = _current_db_path.get()
+    if ctx_path:
+        return ctx_path
     return os.environ.get("DATABASE_PATH", settings.DATABASE_PATH)
 
 
@@ -199,6 +212,24 @@ def init_db(db_path: str = None) -> None:
                 conn.execute(f"ALTER TABLE alerts ADD COLUMN {col_name} {col_type};")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_alerts_pincode ON alerts(pincode);")
+
+        # 8. Dispute Decision Audit Log Table (for Administrator & Demo Audit Trail)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS dispute_audit_log (
+            id TEXT PRIMARY KEY,
+            challenge_id TEXT NOT NULL,
+            report_id TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            action TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            decided_by TEXT NOT NULL,
+            previous_status TEXT,
+            new_status TEXT,
+            created_at TEXT NOT NULL
+        );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_dispute_audit_challenge ON dispute_audit_log(challenge_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_dispute_audit_report ON dispute_audit_log(report_id);")
 
         # Seed Appendix C verified businesses
         for item in APPENDIX_C_VERIFIED:

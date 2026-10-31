@@ -1,9 +1,8 @@
-import hmac
+﻿import hmac
 import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, Request, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from app.config import settings
 
@@ -29,13 +28,16 @@ def verify_license_signature(licensee: str, expires_at: str, signature: str) -> 
     return hmac.compare_digest(expected, signature.strip())
 
 
+def _is_demo_pov(x_cyberforge_pov: Any) -> bool:
+    return isinstance(x_cyberforge_pov, str) and x_cyberforge_pov.strip().lower() == "demo"
+
+
 class LicenseManager:
     """In-memory active license manager with instant reload without server restarts."""
-    def __init__(self):
-        # Default active license valid for 1 year
-        far_future = (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
-        self.licensee = "Demo Bank"
-        self.expires_at = far_future
+    def __init__(self, default_days: int = 365, default_licensee: str = "Demo Bank"):
+        now = datetime.now(timezone.utc)
+        self.licensee = default_licensee
+        self.expires_at = (now + timedelta(days=default_days)).isoformat()
         self.signature = generate_license_signature(self.licensee, self.expires_at)
 
     def set_license(self, licensee: str, expires_at: str, signature: str) -> bool:
@@ -45,9 +47,8 @@ class LicenseManager:
         except Exception:
             raise ValueError("Invalid ISO timestamp format for expires_at")
 
-        # Allow valid HMAC signature or demo signatures
+        # Allow valid HMAC signature or mock signatures
         if not verify_license_signature(licensee, expires_at, signature) and not signature.startswith("MEUCI"):
-            # If signature doesn't match and isn't mock signature
             raise ValueError("Invalid cryptographic signature for license")
 
         self.licensee = licensee.strip()
@@ -63,32 +64,38 @@ class LicenseManager:
         except Exception:
             return True
 
+    def reset_short_demo(self, minutes: int = 5, licensee: str = "Demo User") -> None:
+        now = datetime.now(timezone.utc)
+        self.licensee = licensee
+        self.expires_at = (now + timedelta(minutes=minutes)).isoformat()
+        self.signature = generate_license_signature(self.licensee, self.expires_at)
+
     def get_status(self) -> Dict[str, Any]:
+        exp = datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        remaining_sec = max(0, int((exp - now).total_seconds()))
+        expired = self.is_expired()
         return {
             "licensee": self.licensee,
             "expires_at": self.expires_at,
-            "active": not self.is_expired(),
-            "status": "EXPIRED" if self.is_expired() else "ACTIVE"
+            "active": not expired,
+            "status": "EXPIRED" if expired else "ACTIVE",
+            "remaining_seconds": remaining_sec,
+            "license_hint": self.licensee
         }
 
 
-license_manager = LicenseManager()
+# 1. Administrator / Production 365-day license manager
+license_manager = LicenseManager(default_days=365, default_licensee="Demo Bank")
+
+# 2. Demo User isolated 5-minute license manager
+demo_license_manager = LicenseManager(default_days=0, default_licensee="Demo User")
+demo_license_manager.reset_short_demo(minutes=5, licensee="Demo User")
+
 router = APIRouter()
 
 
-@router.get("/license")
-@router.get("/license/status")
-def get_license():
-    """Returns the current active license status."""
-    st = license_manager.get_status()
-    st["license_hint"] = license_manager.licensee
-    return st
-
-
-@router.post("/license")
-@router.post("/license/activate")
-def upload_license(payload: LicensePayload):
-    """Uploads and activates a renewed license file without restarting the server."""
+def _process_license_upload(target_manager: LicenseManager, payload: LicensePayload, is_demo: bool = False) -> Dict[str, Any]:
     licensee = payload.licensee
     expires_at = payload.expires_at
     signature = payload.signature
@@ -96,7 +103,7 @@ def upload_license(payload: LicensePayload):
     # Handle demo preset shortcuts
     if payload.demo_type:
         now = datetime.now(timezone.utc)
-        target_licensee = payload.licensee or "Demo Bank"
+        target_licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
         if payload.demo_type in ("short", "short_5m", "5m"):
             expires_at = (now + timedelta(minutes=5)).isoformat()
         elif payload.demo_type in ("long", "long_1y", "1y"):
@@ -115,22 +122,22 @@ def upload_license(payload: LicensePayload):
         # Master demo renewal key: "Gandadagudi"
         if raw_lower in ("gandadagudi", "gandhadagudi", "gandada gudi", "gandhada gudi"):
             now = datetime.now(timezone.utc)
-            licensee = payload.licensee or "Demo Bank"
-            expires_at = (now + timedelta(days=365)).isoformat()
+            licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
+            expires_at = (now + timedelta(days=365 if not is_demo else 5)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.upper() in ("DEMO:SHORT_5M", "DEMO:5M", "SHORT_5M", "SHORT"):
             now = datetime.now(timezone.utc)
-            licensee = payload.licensee or "Demo Bank"
+            licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
             expires_at = (now + timedelta(minutes=5)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.upper() in ("DEMO:LONG_1Y", "DEMO:1Y", "LONG_1Y", "LONG"):
             now = datetime.now(timezone.utc)
-            licensee = payload.licensee or "Demo Bank"
+            licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
             expires_at = (now + timedelta(days=365)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.upper() in ("DEMO:EXPIRED", "EXPIRED"):
             now = datetime.now(timezone.utc)
-            licensee = payload.licensee or "Demo Bank"
+            licensee = payload.licensee or ("Demo User" if is_demo else "Demo Bank")
             expires_at = (now - timedelta(minutes=1)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
         elif raw_key.startswith("{") and raw_key.endswith("}"):
@@ -157,15 +164,53 @@ def upload_license(payload: LicensePayload):
         raise HTTPException(status_code=400, detail="Invalid license key. Please check your renewal key.")
 
     try:
-        license_manager.set_license(licensee, expires_at, signature)
+        target_manager.set_license(licensee, expires_at, signature)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid license key. Please check your renewal key.")
 
     return {
         "status": "VALID",
-        "licensee": license_manager.licensee,
-        "expires_at": license_manager.expires_at,
-        "active": not license_manager.is_expired(),
-        "license_hint": license_manager.licensee
+        "licensee": target_manager.licensee,
+        "expires_at": target_manager.expires_at,
+        "active": not target_manager.is_expired(),
+        "license_hint": target_manager.licensee,
+        "remaining_seconds": target_manager.get_status().get("remaining_seconds", 0)
     }
 
+
+@router.get("/license")
+@router.get("/license/status")
+def get_license(x_cyberforge_pov: Optional[str] = Header(None)):
+    """Returns the license status for the active POV."""
+    if _is_demo_pov(x_cyberforge_pov):
+        return demo_license_manager.get_status()
+    return license_manager.get_status()
+
+
+@router.post("/license")
+@router.post("/license/activate")
+def upload_license(payload: LicensePayload, x_cyberforge_pov: Optional[str] = Header(None)):
+    """Uploads and activates a license."""
+    is_demo = _is_demo_pov(x_cyberforge_pov)
+    target_mgr = demo_license_manager if is_demo else license_manager
+    return _process_license_upload(target_mgr, payload, is_demo=is_demo)
+
+
+# Explicit Demo License Endpoints
+@router.get("/demo/license/status")
+def get_demo_license_status():
+    """Returns the Demo 5-minute license status."""
+    return demo_license_manager.get_status()
+
+
+@router.post("/demo/license/activate")
+def activate_demo_license(payload: LicensePayload):
+    """Activates/renews the 5-minute demo license (e.g. via 'Gandadagudi')."""
+    return _process_license_upload(demo_license_manager, payload, is_demo=True)
+
+
+@router.post("/demo/license/reset")
+def reset_demo_license():
+    """Safely resets the Demo environment license to a fresh 5-minute window."""
+    demo_license_manager.reset_short_demo(minutes=5, licensee="Demo User")
+    return demo_license_manager.get_status()

@@ -1,12 +1,12 @@
-/**
+﻿/**
  * Centralized API service for the Community Scam Map frontend.
  *
  * Rules enforced here:
- *  - All endpoint paths live in this file only (update once, app-wide effect).
+ *  - All endpoint paths live in this file only.
  *  - Backend base URL comes from VITE_API_BASE_URL (empty string = same-origin).
+ *  - Automatically transmits the active POV (admin, normal, demo) and authorization tokens.
  *  - The frontend never computes verdicts, masking, or thresholds; it renders
  *    exactly what the backend returns.
- *  - No secrets in frontend env vars; only public connection settings.
  */
 
 import type {
@@ -20,25 +20,39 @@ import type {
   HealthResponse,
   LicenseResponse,
   ApiErrorBody,
+  AdminLoginRequest,
+  AdminLoginResponse,
+  AdminReportItem,
+  AdminDisputeItem,
+  DisputeDecisionRequest,
+  DisputeDecisionResponse,
+  DisputeAuditLogItem,
 } from '../types/api';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** All endpoint paths in one place. TBC = confirm exact paths with Developer A
- *  and update here only. */
 export const ENDPOINTS = {
-  health: '/api/health', // TBC
+  health: '/api/health',
   lookup: (identifier: string) =>
-    `/api/lookup/${encodeURIComponent(identifier)}`, // TBC
-  report: '/api/report', // TBC
-  map: '/api/map', // TBC
-  alerts: '/api/alerts', // TBC
+    '/api/lookup/' + encodeURIComponent(identifier),
+  report: '/api/report',
+  map: '/api/map',
+  alerts: '/api/alerts',
   challenge: (reportId: string) =>
-    `/api/report/${encodeURIComponent(reportId)}/challenge`, // TBC
-  licenseStatus: '/api/license/status', // TBC
-  licenseActivate: '/api/license/activate', // TBC
+    '/api/report/' + encodeURIComponent(reportId) + '/challenge',
+  licenseStatus: '/api/license/status',
+  licenseActivate: '/api/license/activate',
+  adminLogin: '/api/admin/login',
+  adminReports: '/api/admin/reports',
+  adminDisputes: '/api/admin/disputes',
+  adminDisputeDecision: (id: string) =>
+    '/api/admin/disputes/' + encodeURIComponent(id) + '/decision',
+  adminAuditLog: '/api/admin/disputes/audit-log',
+  demoLicenseStatus: '/api/demo/license/status',
+  demoLicenseReset: '/api/demo/license/reset',
+  demoLicenseActivate: '/api/demo/license/activate',
 } as const;
 
 export function apiBaseUrl(): string {
@@ -62,7 +76,6 @@ export type ApiErrorCode =
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number | null;
-  /** Backend-provided human readable message, if any. Never invented. */
   readonly detail: string | null;
 
   constructor(
@@ -82,7 +95,7 @@ function statusToErrorCode(status: number): ApiErrorCode {
   if (status === 400) return 'VALIDATION';
   if (status === 404) return 'NOT_FOUND';
   if (status >= 40200 && status <= 40299) return 'LICENSE';
-  if (status === 401 || status === 403) return 'LICENSE'; // license gate (TBC)
+  if (status === 401 || status === 403) return 'LICENSE';
   if (status >= 500) return 'SERVER';
   return 'UNKNOWN';
 }
@@ -130,17 +143,28 @@ async function jsonFetch<T>(path: string, options: RequestOptions = {}): Promise
     else signal.addEventListener('abort', abort, { once: true });
   }
 
+  // POV context and administrator authorization
+  const currentPov = localStorage.getItem('cyberforge_pov') || 'normal';
+  const adminToken = localStorage.getItem('cyberforge_admin_token');
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'X-CyberForge-POV': currentPov,
+  };
+
+  if (adminToken && (currentPov === 'admin' || path.startsWith('/api/admin'))) {
+    headers['Authorization'] = 'Bearer ' + adminToken;
+  }
+
   let response: Response;
   try {
     response = await fetch(buildUrl(path, params), {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
-      credentials: 'omit', // anonymous by design; no cookies/sent identity
+      credentials: 'omit',
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -155,7 +179,6 @@ async function jsonFetch<T>(path: string, options: RequestOptions = {}): Promise
   }
 
   if (!response.ok) {
-    // Prefer backend-provided detail text; never fabricate messages.
     let detail: string | null = null;
     let bodyError: ApiErrorBody | null = null;
     try {
@@ -167,7 +190,7 @@ async function jsonFetch<T>(path: string, options: RequestOptions = {}): Promise
         detail = JSON.stringify(rawDetail);
       }
     } catch {
-      // no JSON body; fall through with null detail
+      // no JSON body
     }
     const code = statusToErrorCode(response.status);
     const fallback =
@@ -193,15 +216,15 @@ async function jsonFetch<T>(path: string, options: RequestOptions = {}): Promise
 }
 
 // ---------------------------------------------------------------------------
-// API calls
+// Public & Core API Calls
 // ---------------------------------------------------------------------------
 
-/** Health/connectivity probe used by the status banner (TBC path/shape). */
+/** Health/connectivity probe. */
 export function getHealth(options?: RequestOptions): Promise<HealthResponse> {
   return jsonFetch<HealthResponse>(ENDPOINTS.health, options);
 }
 
-/** Identifier verification. Returns the backend verdict response verbatim. */
+/** Identifier verification. */
 export function lookup(identifier: string, options?: RequestOptions): Promise<LookupResponse> {
   if (!identifier.trim()) {
     return Promise.reject(new ApiError('VALIDATION', 'Enter what you want to check.'));
@@ -209,7 +232,7 @@ export function lookup(identifier: string, options?: RequestOptions): Promise<Lo
   return jsonFetch<LookupResponse>(ENDPOINTS.lookup(identifier.trim()), options);
 }
 
-/** Anonymous scam report. Only fields supported by the PRD are sent. */
+/** Anonymous scam report. */
 export function submitReport(payload: ReportPayload, options?: RequestOptions): Promise<ReportResponse> {
   return jsonFetch<ReportResponse>(ENDPOINTS.report, {
     ...options,
@@ -218,18 +241,18 @@ export function submitReport(payload: ReportPayload, options?: RequestOptions): 
   });
 }
 
-/** Community scam map bubbles: fixed pincode centroids with counted reports. */
+/** Community scam map centroids. */
 export function getMap(types?: string[] | undefined, options?: RequestOptions): Promise<MapResponse> {
-  const t = types && types.length > 0 ? types.join(',') : undefined; // TBC parameter name with Developer A
+  const t = types && types.length > 0 ? types.join(',') : undefined;
   return jsonFetch<MapResponse>(ENDPOINTS.map, { ...options, params: { type: t } });
 }
 
-/** Alerts feed (SPIKE / NEW_TYPE). Backend decides thresholds. */
+/** Alerts feed. */
 export function getAlerts(options?: RequestOptions): Promise<AlertsResponse> {
   return jsonFetch<AlertsResponse>(ENDPOINTS.alerts, options);
 }
 
-/** Dispute an individual report by its reference ID. Frontend never changes the verdict itself. */
+/** Dispute an individual report by its reference ID. */
 export function challengeReport(
   reportId: string,
   payload: ChallengePayload,
@@ -239,19 +262,19 @@ export function challengeReport(
     ...options,
     method: 'POST',
     body: {
+      ...payload,
       reference_id: reportId,
       report_id: reportId,
-      ...payload,
     },
   });
 }
 
-/** License status of this deployment (display only; enforcement is backend-side). */
+/** License status for active POV. */
 export function getLicenseStatus(options?: RequestOptions): Promise<LicenseResponse> {
   return jsonFetch<LicenseResponse>(ENDPOINTS.licenseStatus, options);
 }
 
-/** License activation/renewal. No cryptographic work happens in the frontend. */
+/** License activation/renewal. */
 export function activateLicense(
   licenseKey: string,
   options?: RequestOptions
@@ -260,5 +283,56 @@ export function activateLicense(
     ...options,
     method: 'POST',
     body: { license_key: licenseKey },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Administrator API Calls
+// ---------------------------------------------------------------------------
+
+export function adminLogin(payload: AdminLoginRequest, options?: RequestOptions): Promise<AdminLoginResponse> {
+  return jsonFetch<AdminLoginResponse>(ENDPOINTS.adminLogin, {
+    ...options,
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export function getAdminReports(options?: RequestOptions): Promise<AdminReportItem[]> {
+  return jsonFetch<AdminReportItem[]>(ENDPOINTS.adminReports, options);
+}
+
+export function getAdminDisputes(options?: RequestOptions): Promise<AdminDisputeItem[]> {
+  return jsonFetch<AdminDisputeItem[]>(ENDPOINTS.adminDisputes, options);
+}
+
+export function decideDispute(
+  challengeId: string,
+  payload: DisputeDecisionRequest,
+  options?: RequestOptions
+): Promise<DisputeDecisionResponse> {
+  return jsonFetch<DisputeDecisionResponse>(ENDPOINTS.adminDisputeDecision(challengeId), {
+    ...options,
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export function getDisputeAuditLog(options?: RequestOptions): Promise<DisputeAuditLogItem[]> {
+  return jsonFetch<DisputeAuditLogItem[]>(ENDPOINTS.adminAuditLog, options);
+}
+
+// ---------------------------------------------------------------------------
+// Demo User API Calls
+// ---------------------------------------------------------------------------
+
+export function getDemoLicenseStatus(options?: RequestOptions): Promise<LicenseResponse> {
+  return jsonFetch<LicenseResponse>(ENDPOINTS.demoLicenseStatus, options);
+}
+
+export function resetDemoLicense(options?: RequestOptions): Promise<LicenseResponse> {
+  return jsonFetch<LicenseResponse>(ENDPOINTS.demoLicenseReset, {
+    ...options,
+    method: 'POST',
   });
 }

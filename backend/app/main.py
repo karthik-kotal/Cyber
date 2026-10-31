@@ -1,15 +1,16 @@
-from fastapi import FastAPI, Request
+﻿from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import init_db
+from app.database import init_db, set_active_db
 from app.normalize import InvalidIdentifierError
-from app.license import license_manager, router as license_router
+from app.license import license_manager, demo_license_manager, router as license_router
 from app.routes import reports, lookup, map, alerts, admin, challenges
 
 
-# Initialize Database
-init_db()
+# Initialize Both Databases: Production and Demo Sandbox
+init_db(settings.DATABASE_PATH)
+init_db(settings.DEMO_DATABASE_PATH)
 
 app = FastAPI(
     title="Community Scam Map for India",
@@ -27,25 +28,54 @@ app.add_middleware(
 )
 
 
-# License Verification Middleware
+# License Verification and Database Routing Middleware
 @app.middleware("http")
-async def license_check_middleware(request: Request, call_next):
+async def license_and_pov_middleware(request: Request, call_next):
     path = request.url.path
-    # Exempt /health, /license, and docs
+    pov = request.headers.get("x-cyberforge-pov", "normal").strip().lower()
+
+    # Route database context
+    if pov == "demo":
+        set_active_db(settings.DEMO_DATABASE_PATH)
+    else:
+        set_active_db(settings.DATABASE_PATH)
+
+    # Exempt paths that never require active license
     exempt_paths = {
         "/health", "/api/health",
         "/license", "/api/license",
         "/license/status", "/api/license/status",
         "/license/activate", "/api/license/activate",
+        "/demo/license", "/api/demo/license",
+        "/demo/license/status", "/api/demo/license/status",
+        "/demo/license/activate", "/api/demo/license/activate",
+        "/demo/license/reset", "/api/demo/license/reset",
+        "/admin/login", "/api/admin/login",
         "/docs", "/redoc", "/openapi.json"
     }
-    if path not in exempt_paths:
-        if license_manager.is_expired():
-            return JSONResponse(
-                status_code=403,
-                content={"error": "LICENSE_EXPIRED"}
-            )
-    return await call_next(request)
+
+    try:
+        if path not in exempt_paths:
+            if pov == "demo":
+                # Demo environment uses isolated 5-minute license
+                if demo_license_manager.is_expired():
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "DEMO_LICENSE_EXPIRED", "detail": "Demo 5-minute license expired. Renew with Gandadagudi or reset demo."}
+                    )
+            elif pov == "admin":
+                # Administrator uses 365-day enterprise license
+                if license_manager.is_expired():
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "LICENSE_EXPIRED", "detail": "Enterprise administrator license expired."}
+                    )
+            # Normal user POV: No license friction, directly allowed
+
+        response = await call_next(request)
+        return response
+    finally:
+        set_active_db(None)
 
 
 # Exception Handlers

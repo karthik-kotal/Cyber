@@ -1,10 +1,16 @@
-/**
+﻿/**
  * Official API contract types for the Community Scam Map project.
  *
  * These types mirror Developer A's and Developer B's backend schemas in
  * backend/app/schemas.py and the API contract in backend/API_CONTRACT.md.
  * Endpoint paths live only in services/api.ts.
  */
+
+// ---------------------------------------------------------------------------
+// POV (Point of View)
+// ---------------------------------------------------------------------------
+
+export type UserPOV = 'admin' | 'normal' | 'demo';
 
 // ---------------------------------------------------------------------------
 // Verdicts
@@ -194,6 +200,84 @@ export interface ChallengeResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Administrator & Disputes
+// ---------------------------------------------------------------------------
+
+export interface AdminLoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface AdminLoginResponse {
+  ok: boolean;
+  token: string;
+  username: string;
+  role: string;
+  license_status: LicenseResponse;
+}
+
+export interface AdminReportItem {
+  id: string;
+  identifier: string;
+  identifier_type: string;
+  category: string;
+  scam_type: string;
+  occurred_at: string;
+  status: string;
+  is_disputed: number;
+  dispute_reason?: string | null;
+  amount_lost_inr: number;
+  pincode?: string | null;
+  city?: string | null;
+  created_at: string;
+}
+
+export interface AdminDisputeItem {
+  id: string;
+  report_id: string;
+  identifier: string;
+  identifier_type?: string | null;
+  claimant_name?: string | null;
+  contact_email?: string | null;
+  proof_note?: string | null;
+  status: string;
+  created_at: string;
+  resolved_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DisputeDecisionRequest {
+  action: 'APPROVE' | 'REJECT';
+  reason: string;
+}
+
+export interface DisputeDecisionResponse {
+  ok: boolean;
+  challenge_id: string;
+  report_id: string;
+  action: string;
+  new_challenge_status: string;
+  new_report_status: string;
+  updated_verdict: string;
+  audit_id: string;
+  decided_by: string;
+  decided_at: string;
+}
+
+export interface DisputeAuditLogItem {
+  id: string;
+  challenge_id: string;
+  report_id: string;
+  identifier: string;
+  action: string;
+  reason: string;
+  decided_by: string;
+  previous_status?: string | null;
+  new_status?: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Map
 // ---------------------------------------------------------------------------
 
@@ -265,6 +349,7 @@ export interface LicenseResponse {
   licensee?: string | null;
   expires_at: string | null;
   license_hint?: string | null;
+  remaining_seconds?: number;
 }
 
 // ---------------------------------------------------------------------------
