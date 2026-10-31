@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Query, Request, HTTPException
 from app.database import get_db_connection
 from app.schemas import LookupResponse
+from app.config import settings
 from app.normalize import normalize_identifier, mask_identifier, InvalidIdentifierError
 from app.trust_engine import evaluate_trust
 
@@ -110,14 +111,14 @@ def lookup_identifier(
             """,
             (normalized_id,)
         )
-        is_challenged = cur.fetchone()[0] > 0
+        active_ch_count = cur.fetchone()[0]
 
         # 2. Retrieve accepted reports
         cur.execute(
             """
-            SELECT reporter_hmac, ip_prefix_hmac, note_fingerprint, status, occurred_at,
+            SELECT id, reporter_hmac, ip_prefix_hmac, note_fingerprint, status, occurred_at,
                    scam_type, channel, pincode, amount_lost_inr, loss_amount, file_sha256,
-                   phash, tx_ref_hmac, ocr_fingerprint, created_at
+                   phash, tx_ref_hmac, ocr_fingerprint, created_at, is_disputed, dispute_reason
             FROM reports WHERE identifier = ? AND status = 'ACCEPTED'
             ORDER BY occurred_at ASC
             """,
@@ -126,6 +127,8 @@ def lookup_identifier(
         reports = [dict(row) for row in cur.fetchall()]
         report_count = len(reports)
         total_loss = sum(r.get("amount_lost_inr") or r.get("loss_amount") or 0.0 for r in reports)
+        has_disputed_reports = any(bool(r.get("is_disputed")) for r in reports)
+        is_challenged = (active_ch_count > 0) or has_disputed_reports
 
         if verified_biz:
             # Verified businesses must never become KNOWN_SCAM
@@ -159,12 +162,14 @@ def lookup_identifier(
                 evidence={
                     "verified": False,
                     "total_reported_loss_inr": 0.0,
-                    "reports": []
+                    "reports": [],
+                    "privacy_notice": "Reports are anonymous. Reporter identities and exact locations are not displayed."
                 },
                 challenged=is_challenged
             )
 
         # 4. Evaluate trust rules
+        # If any report is disputed or the case has an active challenge, verdict is capped at SUSPICIOUS
         verdict, distinct_reporters, display_value, evidence_summary = evaluate_trust(
             reports=reports,
             is_verified=False,
@@ -177,14 +182,20 @@ def lookup_identifier(
         last_seen = reports[-1]["occurred_at"]
         primary_scam_type = reports[-1]["scam_type"]
 
-        # PRD Evidence List: strictly {occurred_at, channel, scam_type, pincode}
+        # PRD Evidence List: strictly {id, occurred_at, channel, scam_type, pincode, is_disputed}
         # Never includes who reported, IP, or their note!
         evidence_list = [
             {
+                "id": r["id"],
+                "report_id": r["id"],
+                "reference_id": r["id"],
                 "occurred_at": r["occurred_at"],
                 "channel": r.get("channel") or "Phone call",
                 "scam_type": r["scam_type"],
-                "pincode": r.get("pincode")
+                "pincode": r.get("pincode"),
+                "is_disputed": bool(r.get("is_disputed")),
+                "dispute_status": "DISPUTED" if r.get("is_disputed") else None,
+                "dispute_reason": r.get("dispute_reason") if r.get("is_disputed") else None,
             }
             for r in reports
         ]
@@ -194,6 +205,9 @@ def lookup_identifier(
             "reports": evidence_list,
             "total_reported_loss_inr": float(total_loss),
             "reports_analyzed": report_count,
+            "disputed_reports_count": sum(1 for r in reports if r.get("is_disputed")),
+            "privacy_notice": "Reports are anonymous. Reporter identities and exact locations are not displayed.",
+            "dispute_notice": "Disputes apply to individual reports, not the entire phone number or identifier.",
             "verified": False
         })
 

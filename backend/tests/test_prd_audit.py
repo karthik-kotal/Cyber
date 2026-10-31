@@ -328,23 +328,24 @@ def test_challenge_workflow():
     target = "+91 9877766655"
     
     # 3 independent reports making it KNOWN_SCAM
+    rep_ids = []
     for i in range(3):
-        submit_report(ReportCreate(
+        rep = submit_report(ReportCreate(
             identifier_value=target,
             identifier_type="phone",
             scam_type="digital-arrest",
             reporter_id=f"victim_{i}",
             pincode="560102"
         ), make_request(f"8.8.{i}.1"))
+        rep_ids.append(rep.report_id)
 
     before = lookup_identifier(type="phone", value=target)
     assert before.verdict == "KNOWN_SCAM"
     assert before.challenged is False
 
-    # Submit challenge
+    # Submit challenge with report Reference ID
     chal_res = create_challenge(ChallengeCreate(
-        identifier_type="phone",
-        identifier_value=target,
+        reference_id=rep_ids[0],
         claimant_name="Official Dispatch",
         contact_email="help@dispatch.in",
         proof_note="Legitimate company fleet SIM"

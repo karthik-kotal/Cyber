@@ -61,7 +61,12 @@ export function LookupPage({ lang }: { lang: Lang }): React.JSX.Element {
         <ErrorState error={error} onRetry={refresh} retryLabel={get(lang, 'tryAgain')} />
       ) : data ? (
         <section>
-          <LookupResultCard result={data} lang={lang} onDispute={() => navigate('/dispute')} />
+          <LookupResultCard
+            result={data}
+            lang={lang}
+            onDispute={() => navigate('/dispute')}
+            onDisputeReport={(repId) => navigate(`/dispute?reportId=${encodeURIComponent(repId)}`)}
+          />
         </section>
       ) : (
         <EmptyState title={get(lang, 'empty')} hint="Enter an identifier above to check." icon="🔍" />

@@ -31,13 +31,20 @@ def check_and_generate_alerts(
     cur = conn.cursor()
 
     # 1. SPIKE Alert Check: Reports in last 24 hours for this PIN code
+    # Exclude disputed reports and require independent corroboration (at least 2 distinct reporters)
     cur.execute(
-        "SELECT COUNT(*) FROM reports WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED'",
+        """
+        SELECT COUNT(*), COUNT(DISTINCT reporter_hmac)
+        FROM reports
+        WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
+        """,
         (clean_pin, window_24h)
     )
-    count_24h = cur.fetchone()[0]
+    spike_row = cur.fetchone()
+    count_24h = spike_row[0]
+    distinct_reporters_24h = spike_row[1]
 
-    if count_24h >= settings.SPIKE_REPORT_THRESHOLD:
+    if count_24h >= settings.SPIKE_REPORT_THRESHOLD and distinct_reporters_24h >= 2:
         # Check if an alert for this spike was already created today for this pincode
         cur.execute(
             "SELECT COUNT(*) FROM alerts WHERE type = 'SPIKE' AND pincode = ? AND created_at >= ?",
@@ -80,10 +87,19 @@ def check_and_generate_alerts(
             })
 
     # 2. NEW_TYPE Alert Check: New scam type in the specified pincode
+    # Check if verified business (verified businesses never trigger scam alerts)
+    cur.execute("SELECT COUNT(*) FROM verified_businesses WHERE identifier = ?", (identifier,))
+    if cur.fetchone()[0] > 0:
+        return alerts_generated
+
     # Check if this scam_type ever existed in this pincode before window_24h
     if scam_type and scam_type != "other":
         cur.execute(
-            "SELECT COUNT(*) FROM reports WHERE pincode = ? AND scam_type = ? AND occurred_at < ? AND status = 'ACCEPTED'",
+            """
+            SELECT COUNT(*) FROM reports
+            WHERE pincode = ? AND scam_type = ? AND occurred_at < ? AND status = 'ACCEPTED'
+                  AND (is_disputed IS NULL OR is_disputed = 0)
+            """,
             (clean_pin, scam_type, window_24h)
         )
         historical_count = cur.fetchone()[0]

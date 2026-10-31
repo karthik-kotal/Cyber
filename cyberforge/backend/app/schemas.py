@@ -144,7 +144,8 @@ class AlertsResponse(BaseModel):
 # --- CHALLENGE SCHEMAS ---
 
 class ChallengeCreate(BaseModel):
-    report_id: Optional[str] = None
+    reference_id: Optional[str] = Field(None, description="Exact report Reference ID")
+    report_id: Optional[str] = Field(None, description="Exact report ID (alias for reference_id)")
     identifier_type: Optional[str] = Field("phone", description="phone, upi, url, sender_id, bank_account, whatsapp, email, sms")
     identifier_value: Optional[str] = Field(None, description="Disputed identifier value")
     identifier: Optional[str] = Field(None, description="Alias for identifier_value")
@@ -167,6 +168,8 @@ class ChallengeResponse(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     challenge_id: str
     id: Optional[str] = None
+    reference_id: Optional[str] = None
+    report_id: Optional[str] = None
     status: Any = "under_review"
     identifier: Optional[str] = None
     message: Optional[str] = None

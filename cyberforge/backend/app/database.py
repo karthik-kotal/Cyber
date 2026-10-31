@@ -86,6 +86,9 @@ def init_db(db_path: str = None) -> None:
             ("phash", "TEXT"),
             ("tx_ref_hmac", "TEXT"),
             ("ocr_fingerprint", "TEXT"),
+            ("is_disputed", "INTEGER DEFAULT 0"),
+            ("dispute_reason", "TEXT"),
+            ("disputed_at", "TEXT"),
         ]
         for cname, ctype in new_cols:
             if cname not in existing_cols:
@@ -97,6 +100,7 @@ def init_db(db_path: str = None) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_occurred_at ON reports(occurred_at);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_pincode ON reports(pincode);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_scam_type ON reports(scam_type);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reports_is_disputed ON reports(is_disputed);")
 
         # 3. Evidence Table
         conn.execute("""
@@ -144,6 +148,7 @@ def init_db(db_path: str = None) -> None:
         conn.execute("""
         CREATE TABLE IF NOT EXISTS challenges (
             id TEXT PRIMARY KEY,
+            report_id TEXT,
             identifier TEXT NOT NULL,
             identifier_type TEXT,
             claimant_name TEXT,
@@ -151,10 +156,18 @@ def init_db(db_path: str = None) -> None:
             proof_note TEXT,
             status TEXT NOT NULL DEFAULT 'under_review',
             created_at TEXT NOT NULL,
-            resolved_at TEXT
+            resolved_at TEXT,
+            updated_at TEXT
         );
         """)
+        cur.execute("PRAGMA table_info(challenges);")
+        challenge_cols = {row[1] for row in cur.fetchall()}
+        for cname, ctype in [("report_id", "TEXT"), ("updated_at", "TEXT")]:
+            if cname not in challenge_cols:
+                conn.execute(f"ALTER TABLE challenges ADD COLUMN {cname} {ctype};")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_challenges_identifier ON challenges(identifier);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_challenges_report_id ON challenges(report_id);")
 
         # 7. Alerts Table
         conn.execute("""

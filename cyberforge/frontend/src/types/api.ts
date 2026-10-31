@@ -64,10 +64,16 @@ export interface AlertsResponse {
 /** One evidence item returned by the backend (PRD: only occurred_at,
  *  channel, scam_type, pincode — never reporter identity, IP, or notes). */
 export interface EvidenceItem {
+  id?: string | null;
+  report_id?: string | null;
+  reference_id?: string | null;
   occurred_at: string;
   channel?: string | null;
   scam_type?: string | null;
   pincode?: string | null;
+  is_disputed?: boolean;
+  dispute_status?: string | null;
+  dispute_reason?: string | null;
 }
 
 /** Evidence summary object returned for non-verified, non-empty lookups. */
@@ -162,6 +168,7 @@ export interface ReportResponse {
 
 /** Challenge payload mirroring backend ChallengeCreate. */
 export interface ChallengePayload {
+  reference_id?: string | null;
   report_id?: string | null;
   identifier_type?: string | null;
   identifier_value?: string | null;
@@ -178,6 +185,8 @@ export interface ChallengePayload {
 export interface ChallengeResponse {
   challenge_id: string;
   id?: string | null;
+  reference_id?: string | null;
+  report_id?: string | null;
   status: string;
   identifier?: string | null;
   message?: string | null;

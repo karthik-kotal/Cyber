@@ -229,16 +229,20 @@ export function getAlerts(options?: RequestOptions): Promise<AlertsResponse> {
   return jsonFetch<AlertsResponse>(ENDPOINTS.alerts, options);
 }
 
-/** Dispute a report by id. Frontend never changes the verdict itself. */
+/** Dispute an individual report by its reference ID. Frontend never changes the verdict itself. */
 export function challengeReport(
   reportId: string,
   payload: ChallengePayload,
   options?: RequestOptions
 ): Promise<ChallengeResponse> {
-  return jsonFetch<ChallengeResponse>(ENDPOINTS.challenge(reportId), {
+  return jsonFetch<ChallengeResponse>('/api/disputes', {
     ...options,
     method: 'POST',
-    body: payload,
+    body: {
+      reference_id: reportId,
+      report_id: reportId,
+      ...payload,
+    },
   });
 }
 

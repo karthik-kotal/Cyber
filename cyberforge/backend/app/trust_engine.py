@@ -106,7 +106,7 @@ def evaluate_trust(
                 should_merge = True
             elif sim["identical_note"]:
                 should_merge = True
-            elif sim["same_network"] and (sim["burst_timing"] or sim["exact_file_match"] or sim["identical_note"]):
+            elif sim["same_network"]:
                 should_merge = True
             elif sim["exact_file_match"] and (sim["same_network"] or sim["burst_timing"]):
                 should_merge = True

@@ -204,21 +204,23 @@ def test_challenge_behavior():
     target = "+91 9844455566"
 
     # Create 3 independent reports making it KNOWN_SCAM
+    rep_ids = []
     for i in range(3):
-        submit_report(ReportCreate(
+        rep = submit_report(ReportCreate(
             identifier=target,
             scam_type="IMPERSONATION",
             reporter_id=f"legit_rep_{i}",
             note=f"Custom note about call {i}"
         ), make_request(f"10.0.{i+10}.1"))
+        rep_ids.append(rep.report_id)
 
     before = lookup_identifier(identifier=target)
     assert before.verdict == "KNOWN_SCAM"
     assert before.challenged is False
 
-    # Submit a challenge
+    # Submit a challenge with valid report Reference ID
     chal = create_challenge(ChallengeCreate(
-        identifier=target,
+        reference_id=rep_ids[0],
         challenger_name="ABC Logistics Telecom",
         reason="Official driver dispatch SIM card, falsely reported",
         proof_url="https://abclogistics.in/telecom-cert.pdf"
@@ -235,17 +237,14 @@ def test_challenge_behavior():
 def test_challenged_identifier_without_reports():
     target = "+91 9777788899"
 
-    create_challenge(ChallengeCreate(
-        identifier=target,
-        challenger_name="Test Challenger",
-        reason="Proactive challenge"
-    ))
-
-    res = lookup_identifier(identifier=target)
-    # A challenge does NOT convert NO_REPORTS into SUSPICIOUS
-    assert res.verdict == "NO_REPORTS"
-    assert res.challenged is True
-    assert res.report_count == 0
+    # Submitting a challenge without a valid report Reference ID or with a raw phone number raises HTTP 400
+    with pytest.raises(HTTPException) as exc:
+        create_challenge(ChallengeCreate(
+            identifier=target,
+            challenger_name="Test Challenger",
+            reason="Proactive challenge"
+        ))
+    assert exc.value.status_code == 400
 
 
 def test_spike_and_new_type_alerts():
@@ -301,9 +300,17 @@ def test_add_and_list_verified_businesses():
 
 
 def test_challenged_verified_business_remains_verified():
-    # 1930 is verified. Even if someone submits a challenge against 1930, verdict remains VERIFIED_BUSINESS
-    chal = create_challenge(ChallengeCreate(
+    # 1930 is verified. First submit a report so there is a report Reference ID
+    rep = submit_report(ReportCreate(
         identifier="1930",
+        scam_type="IMPERSONATION",
+        reporter_id="confused_user",
+        note="Claimed to be cyber helpline"
+    ), make_request("10.0.1.1"))
+
+    # Even if someone submits a challenge against this report for 1930, verdict remains VERIFIED_BUSINESS
+    chal = create_challenge(ChallengeCreate(
+        reference_id=rep.report_id,
         challenger_name="Disputer",
         reason="Disputing official helpline"
     ))
@@ -317,15 +324,23 @@ def test_challenged_verified_business_remains_verified():
 
 def test_challenged_identifier_receiving_new_reports():
     target = "+91 9555666777"
-    # Challenge first
-    create_challenge(ChallengeCreate(
+    # First submit report to obtain reference_id
+    rep = submit_report(ReportCreate(
         identifier=target,
+        scam_type="IMPERSONATION",
+        reporter_id="initial_reporter",
+        note="Initial report"
+    ), make_request("192.168.0.1"))
+
+    # Challenge the report using reference_id
+    create_challenge(ChallengeCreate(
+        reference_id=rep.report_id,
         challenger_name="Store Owner",
         reason="Number was hijacked and recovered"
     ))
 
-    # Add 4 independent reports
-    for i in range(4):
+    # Add 3 more independent reports (making 4 distinct reporters in total)
+    for i in range(1, 4):
         submit_report(ReportCreate(
             identifier=target,
             scam_type="IMPERSONATION",

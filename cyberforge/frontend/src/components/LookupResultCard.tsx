@@ -36,10 +36,12 @@ export function LookupResultCard({
   result,
   lang,
   onDispute,
+  onDisputeReport,
 }: {
   result: LookupResponse;
   lang: Lang;
   onDispute: () => void;
+  onDisputeReport?: (reportId: string) => void;
 }): React.JSX.Element {
   const { verdict } = result;
   const counts = (n: number | null | undefined): string => (typeof n === 'number' ? String(n) : '—');
@@ -130,15 +132,40 @@ export function LookupResultCard({
                 ) : null}
                 {hasReports ? (
                   <Row label={get(lang, 'evidence')}>
-                    <ul className="space-y-1.5 text-left text-xs">
-                      {reports.slice(0, 5).map((item, i) => (
-                        <li key={i} className="rounded bg-slate-50 p-1.5 border border-slate-100">
-                          <span className="font-semibold text-slate-800">{item.channel || 'Report'}</span>
-                          {item.scam_type ? <span className="ml-1 text-slate-600">• {item.scam_type}</span> : null}
-                          {item.pincode ? <span className="ml-1 text-slate-500">({item.pincode})</span> : null}
-                          <span className="ml-1 text-slate-400">• {fmtDate(item.occurred_at)}</span>
-                        </li>
-                      ))}
+                    <ul className="space-y-2 text-left text-xs">
+                      {reports.slice(0, 8).map((item, i) => {
+                        const reportId = item.report_id || item.id || item.reference_id;
+                        return (
+                          <li key={i} className="rounded-lg bg-slate-50 p-2 border border-slate-200 space-y-1">
+                            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                              <span className="font-semibold text-slate-800">{item.channel || 'Report'}</span>
+                              {item.is_disputed ? (
+                                <span className="rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-bold">
+                                  ⚠️ Disputed
+                                </span>
+                              ) : reportId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onDisputeReport ? onDisputeReport(reportId) : onDispute()}
+                                  className="rounded bg-white border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-1"
+                                >
+                                  Dispute Report
+                                </button>
+                              ) : null}
+                            </div>
+                            <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2">
+                              {item.scam_type ? <span>Type: <b>{item.scam_type}</b></span> : null}
+                              {item.pincode ? <span>PIN: <b>{item.pincode}</b></span> : null}
+                              <span className="text-slate-400">{fmtDate(item.occurred_at)}</span>
+                            </div>
+                            {reportId ? (
+                              <div className="text-[10px] text-slate-400 font-mono select-all">
+                                Ref ID: {reportId}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </Row>
                 ) : null}
@@ -149,12 +176,21 @@ export function LookupResultCard({
         })()}
       </dl>
 
+      <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 space-y-1 text-center">
+        <p className="text-xs font-medium text-slate-600">
+          🔒 Reports are anonymous. Reporter identities and exact locations are not displayed.
+        </p>
+        <p className="text-[11px] text-slate-400">
+          ℹ️ Disputes apply to individual reports, not the entire phone number or identifier.
+        </p>
+      </div>
+
       {verdict === KNOWN_SCAM || verdict === SUSPICIOUS ? (
-        <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 text-center">
+        <div className="border-t border-slate-200 bg-white px-4 py-3 text-center">
           <button
             type="button"
             onClick={onDispute}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
+            className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
           >
             {get(lang, 'navDispute')}
           </button>

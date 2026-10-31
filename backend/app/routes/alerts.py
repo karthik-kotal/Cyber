@@ -51,17 +51,19 @@ def get_alerts(
             # 1. SPIKE Check
             cur.execute(
                 """
-                SELECT COUNT(*) FROM reports
-                WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED'
+                SELECT COUNT(*), COUNT(DISTINCT reporter_hmac) FROM reports
+                WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
                 """,
                 (target_pin, t_24h)
             )
-            count_24h = cur.fetchone()[0]
+            spike_row = cur.fetchone()
+            count_24h = spike_row[0]
+            distinct_reps_24h = spike_row[1]
 
             cur.execute(
                 """
                 SELECT COUNT(*) FROM reports
-                WHERE pincode = ? AND occurred_at >= ? AND occurred_at < ? AND status = 'ACCEPTED'
+                WHERE pincode = ? AND occurred_at >= ? AND occurred_at < ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
                 """,
                 (target_pin, t_8d, t_24h)
             )
@@ -72,7 +74,7 @@ def get_alerts(
             cur.execute(
                 """
                 SELECT scam_type, COUNT(*) as cnt FROM reports
-                WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED'
+                WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED' AND (is_disputed IS NULL OR is_disputed = 0)
                 GROUP BY scam_type ORDER BY cnt DESC LIMIT 1
                 """,
                 (target_pin, t_24h)
@@ -80,9 +82,9 @@ def get_alerts(
             top_st_row = cur.fetchone()
             top_scam_type = top_st_row[0] if (top_st_row and top_st_row[0] != "other") else (top_st_row[0] if top_st_row else None)
 
-            # Condition: at least double daily average AND at least threshold (PRD: 5, Dev: settings.SPIKE_REPORT_THRESHOLD)
+            # Condition: at least double daily average AND at least threshold (requires >= 2 distinct reporters)
             min_thresh = min(5, settings.SPIKE_REPORT_THRESHOLD)
-            if count_24h >= min_thresh and (count_24h >= 2 * baseline_per_day or baseline_per_day == 0):
+            if count_24h >= min_thresh and distinct_reps_24h >= 2 and (count_24h >= 2 * baseline_per_day or baseline_per_day == 0):
                 alerts_list.append(AlertItem(
                     type="SPIKE",
                     pincode=target_pin,
