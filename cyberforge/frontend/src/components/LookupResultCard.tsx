@@ -143,7 +143,7 @@ export function LookupResultCard({
                                 <span className="rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-bold">
                                   ⚠️ Disputed
                                 </span>
-                              ) : reportId ? (
+                              ) : reportId && localStorage.getItem('cyberforge_pov') !== 'admin' ? (
                                 <button
                                   type="button"
                                   onClick={() => onDisputeReport ? onDisputeReport(reportId) : onDispute()}
@@ -185,7 +185,7 @@ export function LookupResultCard({
         </p>
       </div>
 
-      {verdict === KNOWN_SCAM || verdict === SUSPICIOUS ? (
+      {(verdict === KNOWN_SCAM || verdict === SUSPICIOUS) && localStorage.getItem('cyberforge_pov') !== 'admin' ? (
         <div className="border-t border-slate-200 bg-white px-4 py-3 text-center">
           <button
             type="button"

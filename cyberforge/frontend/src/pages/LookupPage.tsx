@@ -11,6 +11,7 @@ import { LookupResultCard } from '../components/LookupResultCard';
 
 export function LookupPage({ lang }: { lang: Lang }): React.JSX.Element {
   const navigate = useNavigate();
+  const currentPov = localStorage.getItem('cyberforge_pov') || 'normal';
   const [identifier, setIdentifier] = useState('');
   const { data, loading, error, refresh } = useApiData<LookupResponse>(
     useCallback(
@@ -64,8 +65,10 @@ export function LookupPage({ lang }: { lang: Lang }): React.JSX.Element {
           <LookupResultCard
             result={data}
             lang={lang}
-            onDispute={() => navigate('/dispute')}
-            onDisputeReport={(repId) => navigate(`/dispute?reportId=${encodeURIComponent(repId)}`)}
+            onDispute={() => navigate(currentPov === 'admin' ? '/admin' : '/dispute')}
+            onDisputeReport={(repId) =>
+              navigate(currentPov === 'admin' ? '/admin' : `/dispute?reportId=${encodeURIComponent(repId)}`)
+            }
           />
         </section>
       ) : (

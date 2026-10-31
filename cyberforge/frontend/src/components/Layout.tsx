@@ -1,4 +1,4 @@
-﻿import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { get, type Lang } from '../i18n/strings';
 import { BottomNav } from './BottomNav';
 import { BackendStatusBanner } from './BackendStatusBanner';
@@ -94,7 +94,7 @@ export function Layout({ lang, onToggleLang, title, children }: LayoutProps): Re
           </div>
         </div>
 
-        {/* Secondary links: Alerts and Dispute */}
+        {/* Secondary links: Alerts and (for citizens/demo) Dispute */}
         <nav
           aria-label="Secondary"
           className="mx-auto flex max-w-lg gap-4 px-4 pb-1.5 text-xs text-slate-300"
@@ -109,16 +109,18 @@ export function Layout({ lang, onToggleLang, title, children }: LayoutProps): Re
           >
             {get(lang, 'navAlerts')}
           </NavLink>
-          <NavLink
-            to="/dispute"
-            className={({ isActive }) =>
-              `hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${
-                isActive ? 'font-semibold text-white' : ''
-              }`
-            }
-          >
-            {get(lang, 'navDispute')}
-          </NavLink>
+          {currentPov !== 'admin' && (
+            <NavLink
+              to="/dispute"
+              className={({ isActive }) =>
+                `hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${
+                  isActive ? 'font-semibold text-white' : ''
+                }`
+              }
+            >
+              {get(lang, 'navDispute')}
+            </NavLink>
+          )}
         </nav>
       </header>
 

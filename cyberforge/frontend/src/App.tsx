@@ -1,4 +1,4 @@
-﻿import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useCallback } from 'react';
 import { Layout } from './components/Layout';
 import { LicenseGate } from './components/LicenseGate';
@@ -92,9 +92,13 @@ function LayoutWithRoutes({
         <Route
           path="/dispute"
           element={
-            <Layout lang={lang} onToggleLang={onToggleLang} title={get(lang, 'challengeTitle')}>
-              <ChallengePage lang={lang} />
-            </Layout>
+            pov === 'admin' ? (
+              <Navigate to="/admin" replace />
+            ) : (
+              <Layout lang={lang} onToggleLang={onToggleLang} title={get(lang, 'challengeTitle')}>
+                <ChallengePage lang={lang} />
+              </Layout>
+            )
           }
         />
         <Route
