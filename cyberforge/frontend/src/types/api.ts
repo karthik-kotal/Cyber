@@ -118,6 +118,7 @@ export type ReportChannel = (typeof REPORT_CHANNELS)[number];
 /** Report payload mirroring backend ReportCreate (backward-compatible aliases). */
 export interface ReportPayload {
   channel?: ReportChannel | string | null;
+  category?: string | null;
   identifier?: string | null;
   identifier_value?: string | null;
   identifier_type?: string | null;

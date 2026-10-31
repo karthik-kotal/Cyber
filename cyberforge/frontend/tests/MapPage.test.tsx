@@ -10,6 +10,8 @@ vi.mock('leaflet', () => {
   };
   const mapMock = {
     addTo: vi.fn().mockReturnThis(),
+    setView: vi.fn().mockReturnThis(),
+    flyTo: vi.fn().mockReturnThis(),
     fitBounds: vi.fn(),
     remove: vi.fn(),
   };
@@ -20,6 +22,7 @@ vi.mock('leaflet', () => {
       layerGroup: vi.fn(() => layerGroupMock),
       circleMarker: vi.fn(() => ({
         bindPopup: vi.fn().mockReturnThis(),
+        openPopup: vi.fn().mockReturnThis(),
         addTo: vi.fn().mockReturnThis(),
       })),
       featureGroup: vi.fn(() => ({
@@ -121,3 +124,4 @@ describe('MapPage', () => {
     expect(screen.getByText(/570001/i)).toBeInTheDocument();
   });
 });
+

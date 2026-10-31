@@ -1,6 +1,6 @@
 import re
-from typing import NamedTuple, Optional
-from urllib.parse import urlparse
+from typing import NamedTuple, Optional, List, Dict, Any
+from urllib.parse import urlparse, parse_qsl, urlencode, parse_qs
 
 
 class InvalidIdentifierError(ValueError):
@@ -46,9 +46,15 @@ _RE_SHORT_HELPLINE = re.compile(r"^(1930|1909|112|100|101|102|108|1091|1075|1098
 _RE_LANDLINE_STD = re.compile(r"^0?([1-9]\d{1,3})(\d{6,8})$")
 
 _RE_UPI = re.compile(r"^[a-zA-Z0-9.\-_]{2,50}@[a-zA-Z0-9.\-_]{2,30}$")
+_RE_EMAIL = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 _RE_SMS_SENDER = re.compile(r"^(?:[A-Za-z]{2}[\-\s])?([A-Za-z0-9]{6})$")
 
-# Official Scam Types from Appendix C
+TRACKING_PARAMS = {
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+    "fbclid", "gclid", "ref", "_hsenc", "mc_cid", "igshid", "si"
+}
+
+# Official Scam Types from Appendix C + new standardized category scam types
 OFFICIAL_SCAM_TYPES = {
     "digital-arrest",
     "fake-kyc-link",
@@ -62,6 +68,11 @@ OFFICIAL_SCAM_TYPES = {
     "fake-customer-care",
     "otp-call",
     "sextortion",
+    "bank-fraud",
+    "whatsapp-scam",
+    "phone-scam",
+    "sms-fraud",
+    "phishing",
 }
 
 
@@ -77,7 +88,12 @@ class ScamType(str):
 
     def __eq__(self, other):
         if isinstance(other, str):
-            return other == self.canonical or other == self.original or other.lower() == self.canonical.lower() or other.lower() == self.original.lower()
+            return (
+                other == self.canonical or
+                other == self.original or
+                other.lower() == self.canonical.lower() or
+                other.lower() == self.original.lower()
+            )
         return False
 
     def __hash__(self):
@@ -95,127 +111,161 @@ SCAM_TYPE_MAP = {
     "otp": "otp-call",
     "otp_scam": "otp-call",
     "impersonation": "fake-customer-care",
-    "phishing": "fake-kyc-link",
+    "phishing": "phishing",
+    "phishing_email": "phishing",
     "fastag_fraud": "upi-refund-qr",
     "electricity": "electricity-disconnection",
+    "bank_account": "bank-fraud",
+    "bank-account": "bank-fraud",
+    "bank_fraud": "bank-fraud",
+    "bank-fraud": "bank-fraud",
+    "whatsapp": "whatsapp-scam",
+    "whatsapp_scam": "whatsapp-scam",
+    "whatsapp-scam": "whatsapp-scam",
+    "phone_scam": "phone-scam",
+    "phone-scam": "phone-scam",
+    "sms_fraud": "sms-fraud",
+    "sms-fraud": "sms-fraud",
+    "website": "fake-kyc-link",
+    "url": "fake-kyc-link",
 }
 
 
 def normalize_scam_type(scam_type: Optional[str]) -> str:
-    """Accepts any scam type; treats unknown values as 'other' rather than rejecting."""
+    """Accepts any scam type; maps recognized variants or returns canonical string."""
     if not scam_type:
         return "other"
     raw = scam_type.strip()
-    cleaned = raw.lower()
+    cleaned = raw.lower().replace(" ", "-").replace("_", "-")
     if cleaned in OFFICIAL_SCAM_TYPES:
         return cleaned
+    if raw.lower() in SCAM_TYPE_MAP:
+        return ScamType(SCAM_TYPE_MAP[raw.lower()], raw)
     if cleaned in SCAM_TYPE_MAP:
         return ScamType(SCAM_TYPE_MAP[cleaned], raw)
     return "other"
 
 
-def normalize_identifier(identifier: str, expected_type: Optional[str] = None) -> NormalizedResult:
-    """
-    Normalizes an identifier according to official PRD requirements.
-    - Phone: +919876543210
-    - Helplines: 1930, 1909
-    - Toll-free / Toll: 1800xxxx, 1860xxxx
-    - Landlines with STD: +91<std><number>
-    - UPI: lowercase without spaces
-    - Links: https://, no www., nothing after ?, no / at the end
-    - SMS Sender: 6-letter uppercase code without the 2-letter telecom prefix
-    - Bank Account: IFSC:ACCOUNT
-    """
-    if not identifier or not isinstance(identifier, str):
-        raise InvalidIdentifierError("Identifier cannot be empty")
+def _clean_url(raw: str) -> str:
+    candidate_url = raw.strip()
+    if not (candidate_url.startswith("http://") or candidate_url.startswith("https://")):
+        candidate_url = f"https://{candidate_url}"
+    try:
+        parsed = urlparse(candidate_url)
+    except Exception:
+        raise InvalidIdentifierError(f"Invalid URL structure: '{raw}'")
 
-    raw = identifier.strip()
-    if not raw or len(raw) < 3:
-        raise InvalidIdentifierError("Identifier is too short or empty")
+    if not parsed.netloc or "." not in parsed.netloc or " " in parsed.netloc:
+        raise InvalidIdentifierError(f"Invalid URL host: '{raw}'")
 
-    # Reject obvious junk tokens
-    junk_words = {
-        "scam", "fraud", "test", "fake", "null", "none", "unknown",
-        "asdf", "qwerty", "12345", "hello", "not-a-number", "asdfghjk", "1234567"
-    }
-    if raw.lower() in junk_words:
-        raise InvalidIdentifierError(f"Rejected invalid/junk input: '{raw}'")
+    norm_netloc = parsed.netloc.lower()
+    if norm_netloc.startswith("www."):
+        norm_netloc = norm_netloc[4:]
 
-    # Reject invalid characters/junk
-    if set(raw).issubset({"-", "_", " ", ".", "!", "@", "#", "$", "%"}):
-        raise InvalidIdentifierError(f"Rejected punctuation junk: '{raw}'")
+    path = parsed.path.rstrip("/")
 
-    # 1. SMS Sender ID Check (e.g. VM-HDFCBK, AD-HDFCBK, HDFCBK)
-    if expected_type in ("sender_id", "sender"):
-        sender_match = _RE_SMS_SENDER.match(raw)
-        if sender_match and sender_match.group(1).isupper():
-            return NormalizedResult(
-                normalized_value=sender_match.group(1).upper(),
-                identifier_type=IdentifierType("sender_id", "SMS_SENDER"),
-                raw_value=raw
-            )
-        raise InvalidIdentifierError(f"Invalid SMS sender ID: '{raw}'")
-    elif "-" in raw and any(c.isupper() for c in raw) and len(raw) <= 10:
-        sender_match = _RE_SMS_SENDER.match(raw)
-        if sender_match and sender_match.group(1).isupper():
-            return NormalizedResult(
-                normalized_value=sender_match.group(1).upper(),
-                identifier_type=IdentifierType("sender_id", "SMS_SENDER"),
-                raw_value=raw
-            )
-    elif len(raw) == 6 and raw.isalpha() and raw.isupper() and expected_type in ("sender_id", "sender", None):
+    # Strip tracking parameters
+    query_str = ""
+    if parsed.query:
+        qsl = parse_qsl(parsed.query, keep_blank_values=True)
+        filtered_q = [(k, v) for k, v in qsl if k.lower() not in TRACKING_PARAMS and not k.lower().startswith("utm")]
+        if filtered_q:
+            query_str = f"?{urlencode(filtered_q)}"
+
+    return f"https://{norm_netloc}{path}{query_str}"
+
+
+def _normalize_bank_account(raw: str) -> NormalizedResult:
+    clean_raw = raw.strip()
+    if clean_raw.startswith("+91") or clean_raw.startswith("+"):
+        raise InvalidIdentifierError(f"Bank account cannot start with country code or '+': '{raw}'")
+
+    # 1. IFSC:ACC (e.g. SBIN0001234:12345678901)
+    if ":" in clean_raw and not clean_raw.upper().startswith("ACC:"):
+        parts = clean_raw.split(":", 1)
+        if len(parts) == 2:
+            ifsc = parts[0].strip().upper()
+            acc = re.sub(r"\D", "", parts[1])
+            if len(ifsc) == 11 and 9 <= len(acc) <= 18:
+                return NormalizedResult(
+                    normalized_value=f"{ifsc}:{acc}",
+                    identifier_type=IdentifierType("bank_account", "BANK_ACCOUNT"),
+                    raw_value=raw
+                )
+            raise InvalidIdentifierError(f"Invalid bank account format (expected IFSC:ACCOUNT): '{raw}'")
+
+    # 2. Starts with ACC: or BANK:
+    cand = clean_raw
+    if cand.upper().startswith("ACC:"):
+        cand = cand[4:]
+    elif cand.upper().startswith("BANK:"):
+        cand = cand[5:]
+
+    acc_digits = re.sub(r"\D", "", cand)
+    if 9 <= len(acc_digits) <= 18:
         return NormalizedResult(
-            normalized_value=raw.upper(),
-            identifier_type=IdentifierType("sender_id", "SMS_SENDER"),
+            normalized_value=f"ACC:{acc_digits}",
+            identifier_type=IdentifierType("bank_account", "BANK_ACCOUNT"),
+            raw_value=raw
+        )
+    raise InvalidIdentifierError(f"Invalid bank account number: must be 9-18 digits, got '{raw}'")
+
+
+def _normalize_whatsapp(raw: str) -> NormalizedResult:
+    clean_raw = raw.strip()
+    is_link = "wa.me" in clean_raw.lower() or "whatsapp.com" in clean_raw.lower()
+    if is_link or clean_raw.startswith("http://") or clean_raw.startswith("https://"):
+        cand_url = clean_raw if (clean_raw.startswith("http://") or clean_raw.startswith("https://")) else f"https://{clean_raw}"
+        try:
+            parsed = urlparse(cand_url)
+        except Exception:
+            raise InvalidIdentifierError(f"Invalid WhatsApp URL: '{raw}'")
+
+        netloc = parsed.netloc.lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+
+        if netloc not in ("wa.me", "api.whatsapp.com", "whatsapp.com", "chat.whatsapp.com"):
+            raise InvalidIdentifierError(f"URL is not a WhatsApp link: '{raw}'")
+
+        path = parsed.path.strip("/")
+        # Check phone in path e.g. wa.me/919876543210 or wa.me/+919876543210
+        phone_cand = re.sub(r"\D", "", path)
+        if len(phone_cand) >= 10:
+            if len(phone_cand) == 10:
+                phone_cand = f"91{phone_cand}"
+            norm_url = f"https://wa.me/{phone_cand}"
+        elif "send" in path and parsed.query:
+            qs = parse_qs(parsed.query)
+            phones = qs.get("phone", [])
+            if phones:
+                p_clean = re.sub(r"\D", "", phones[0])
+                if len(p_clean) == 10:
+                    p_clean = f"91{p_clean}"
+                norm_url = f"https://wa.me/{p_clean}"
+            else:
+                norm_url = f"https://{netloc}/{path}"
+        else:
+            norm_url = f"https://{netloc}/{path}" if path else f"https://{netloc}"
+
+        return NormalizedResult(
+            normalized_value=norm_url,
+            identifier_type=IdentifierType("whatsapp", "WHATSAPP_LINK"),
             raw_value=raw
         )
 
-    # 2. UPI ID Check (must contain @)
-    if "@" in raw:
-        if raw.startswith("@") or raw.endswith("@"):
-            raise InvalidIdentifierError(f"Invalid UPI ID missing username or handle: '{raw}'")
-        cleaned_upi = raw.strip().lower().replace(" ", "")
-        if _RE_UPI.match(cleaned_upi):
-            return NormalizedResult(
-                normalized_value=cleaned_upi,
-                identifier_type=IdentifierType("upi", "UPI_ID"),
-                raw_value=raw
-            )
-        raise InvalidIdentifierError(f"Invalid UPI ID format: '{raw}'")
+    # WhatsApp phone number
+    cleaned_digits = _RE_CLEAN_PHONE_CHARS.sub("", clean_raw)
+    phone_res = _normalize_phone_number(cleaned_digits, clean_raw)
+    return NormalizedResult(
+        normalized_value=phone_res.normalized_value,
+        identifier_type=IdentifierType("whatsapp", "WHATSAPP_PHONE"),
+        raw_value=raw
+    )
 
-    # 3. Bank Account Check (IFSC:ACC)
-    if ":" in raw:
-        parts = raw.split(":", 1)
-        if len(parts) == 2 and len(parts[0]) == 11 and parts[1].isdigit():
-            return NormalizedResult(
-                normalized_value=f"{parts[0].upper()}:{parts[1]}",
-                identifier_type=IdentifierType("bank_account", "BANK_ACCOUNT"),
-                raw_value=raw
-            )
 
-    # 4. URL / Web Link Check
-    if raw.startswith("http://") or raw.startswith("https://") or ("." in raw and ("/" in raw or "www." in raw)):
-        candidate_url = raw if (raw.startswith("http://") or raw.startswith("https://")) else f"https://{raw}"
-        try:
-            parsed = urlparse(candidate_url)
-            if parsed.netloc and "." in parsed.netloc:
-                norm_netloc = parsed.netloc.lower()
-                if norm_netloc.startswith("www."):
-                    norm_netloc = norm_netloc[4:]
-                path = parsed.path.rstrip("/")
-                norm_url = f"https://{norm_netloc}{path}"
-                return NormalizedResult(
-                    normalized_value=norm_url,
-                    identifier_type=IdentifierType("url", "URL"),
-                    raw_value=raw
-                )
-        except Exception:
-            pass
-
-    # 5. Phone, Helpline, Toll-Free (1800), and Toll (1860) Check
-    cleaned_digits = _RE_CLEAN_PHONE_CHARS.sub("", raw)
-
-    # Short helplines (1930, 1909, 112, 100, 1091, etc.)
+def _normalize_phone_number(cleaned_digits: str, raw: str) -> NormalizedResult:
+    # Helplines
     if _RE_SHORT_HELPLINE.match(cleaned_digits):
         return NormalizedResult(
             normalized_value=cleaned_digits,
@@ -223,7 +273,7 @@ def normalize_identifier(identifier: str, expected_type: Optional[str] = None) -
             raw_value=raw
         )
 
-    # 1800 or 1860 numbers
+    # 1800 / 1860
     toll_cand = cleaned_digits.lstrip("+")
     if toll_cand.startswith("911800") or toll_cand.startswith("911860"):
         toll_cand = toll_cand[2:]
@@ -234,18 +284,17 @@ def normalize_identifier(identifier: str, expected_type: Optional[str] = None) -
             raw_value=raw
         )
 
-    # Reject invalid length numbers that are not helplines or toll numbers
+    # Too short
     if cleaned_digits.isdigit() and len(cleaned_digits) < 10:
         raise InvalidIdentifierError(f"Phone number too short: '{raw}'")
 
-    # Landline with STD code (e.g. 011-23456789, 080 22223333, +91 80 4100 2233)
-    # Check landlines starting with 0 (e.g. 011, 022, 033, 044, or 080 followed by 2-6)
+    # Landline with leading 0
     if cleaned_digits.startswith("0") and len(cleaned_digits) in (10, 11):
-        is_metro_landline = (
+        is_metro = (
             cleaned_digits.startswith(("011", "022", "033", "044", "020", "040", "079")) or
             (cleaned_digits.startswith("080") and cleaned_digits[3] in "23456")
         )
-        if is_metro_landline:
+        if is_metro:
             clean_no_zero = cleaned_digits[1:]
             return NormalizedResult(
                 normalized_value=f"+91{clean_no_zero}",
@@ -253,27 +302,26 @@ def normalize_identifier(identifier: str, expected_type: Optional[str] = None) -
                 raw_value=raw
             )
 
-    # Reject 10-digit numbers not starting with 6, 7, 8, 9
-    if len(cleaned_digits) == 10 and not cleaned_digits.startswith(("6", "7", "8", "9")):
-        raise InvalidIdentifierError(f"Invalid mobile number: must start with 6-9, got '{raw}'")
-
     # Mobile numbers (10 digits starting with 6, 7, 8, 9)
-    phone_candidate = cleaned_digits
-    if phone_candidate.startswith("+91"):
-        phone_candidate = phone_candidate[3:]
-    elif phone_candidate.startswith("91") and len(phone_candidate) == 12:
-        phone_candidate = phone_candidate[2:]
-    elif phone_candidate.startswith("0") and len(phone_candidate) == 11 and phone_candidate[1] in "6789":
-        phone_candidate = phone_candidate[1:]
+    phone_cand = cleaned_digits
+    if phone_cand.startswith("+91"):
+        phone_cand = phone_cand[3:]
+    elif phone_cand.startswith("91") and len(phone_cand) == 12:
+        phone_cand = phone_cand[2:]
+    elif phone_cand.startswith("0") and len(phone_cand) == 11 and phone_cand[1] in "6789":
+        phone_cand = phone_cand[1:]
 
-    if _RE_MOBILE_INDIAN.match(phone_candidate):
+    if _RE_MOBILE_INDIAN.match(phone_cand):
         return NormalizedResult(
-            normalized_value=f"+91{phone_candidate}",
+            normalized_value=f"+91{phone_cand}",
             identifier_type=IdentifierType("phone", "PHONE_MOBILE"),
             raw_value=raw
         )
 
-    # General Landline fallback
+    if len(cleaned_digits) == 10 and not cleaned_digits.startswith(("6", "7", "8", "9")):
+        raise InvalidIdentifierError(f"Invalid mobile number: must start with 6-9, got '{raw}'")
+
+    # Landline fallback
     landline_cand = cleaned_digits
     if landline_cand.startswith("+91"):
         landline_cand = landline_cand[3:]
@@ -290,7 +338,194 @@ def normalize_identifier(identifier: str, expected_type: Optional[str] = None) -
                 raw_value=raw
             )
 
-    raise InvalidIdentifierError(f"Invalid or unsupported identifier format: '{raw}'")
+    raise InvalidIdentifierError(f"Invalid or unsupported phone format: '{raw}'")
+
+
+def normalize_identifier(identifier: str, expected_type: Optional[str] = None) -> NormalizedResult:
+    """
+    Normalizes an identifier according to official PRD requirements with type-awareness.
+    - Phone: +919876543210 (Mobile, Helpline, Tollfree, Landline)
+    - Bank Account: ACC:1234567890 or IFSC:ACCOUNT
+    - WhatsApp: +919876543210 or https://wa.me/919876543210
+    - UPI: lowercase without spaces
+    - URL: https://, no www., tracking parameters stripped
+    - Email: lowercase validated email
+    - SMS Sender: 6-letter uppercase code
+    """
+    if not identifier or not isinstance(identifier, str):
+        raise InvalidIdentifierError("Identifier cannot be empty")
+
+    raw = identifier.strip()
+    if not raw or len(raw) < 3:
+        raise InvalidIdentifierError("Identifier is too short or empty")
+
+    # Reject obvious junk tokens
+    junk_words = {
+        "scam", "fraud", "test", "fake", "null", "none", "unknown",
+        "asdf", "qwerty", "12345", "hello", "not-a-number", "asdfghjk", "1234567"
+    }
+    if raw.lower() in junk_words:
+        raise InvalidIdentifierError(f"Rejected invalid/junk input: '{raw}'")
+
+    # Reject punctuation junk
+    if set(raw).issubset({"-", "_", " ", ".", "!", "@", "#", "$", "%"}):
+        raise InvalidIdentifierError(f"Rejected punctuation junk: '{raw}'")
+
+    # Type-aware routing when expected_type is provided
+    if expected_type:
+        t = expected_type.strip().lower()
+
+        # Bank Account
+        if t in ("bank_account", "bank", "bank_acc"):
+            return _normalize_bank_account(raw)
+
+        # WhatsApp
+        if t in ("whatsapp", "whatsapp_link", "whatsapp_phone"):
+            return _normalize_whatsapp(raw)
+
+        # Website / URL
+        if t in ("url", "website", "link"):
+            norm_url = _clean_url(raw)
+            return NormalizedResult(
+                normalized_value=norm_url,
+                identifier_type=IdentifierType("url", "URL"),
+                raw_value=raw
+            )
+
+        # UPI ID
+        if t in ("upi", "upi_id"):
+            if "@" not in raw or raw.startswith("@") or raw.endswith("@"):
+                raise InvalidIdentifierError(f"Invalid UPI ID missing username or handle: '{raw}'")
+            cleaned_upi = raw.strip().lower().replace(" ", "")
+            if _RE_UPI.match(cleaned_upi):
+                return NormalizedResult(
+                    normalized_value=cleaned_upi,
+                    identifier_type=IdentifierType("upi", "UPI_ID"),
+                    raw_value=raw
+                )
+            raise InvalidIdentifierError(f"Invalid UPI ID format: '{raw}'")
+
+        # Email
+        if t in ("email", "mail"):
+            clean_email = raw.strip().lower()
+            if _RE_EMAIL.match(clean_email):
+                return NormalizedResult(
+                    normalized_value=clean_email,
+                    identifier_type=IdentifierType("email", "EMAIL"),
+                    raw_value=raw
+                )
+            raise InvalidIdentifierError(f"Invalid email address format: '{raw}'")
+
+        # SMS Sender ID or SMS channel
+        if t in ("sms", "sender_id", "sender"):
+            sender_match = _RE_SMS_SENDER.match(raw)
+            if sender_match and sender_match.group(1).isupper():
+                return NormalizedResult(
+                    normalized_value=sender_match.group(1).upper(),
+                    identifier_type=IdentifierType("sender_id", "SMS_SENDER"),
+                    raw_value=raw
+                )
+            if t in ("sender_id", "sender"):
+                raise InvalidIdentifierError(f"Invalid SMS sender ID: '{raw}'")
+            # Otherwise normalize as phone
+            cleaned_digits = _RE_CLEAN_PHONE_CHARS.sub("", raw)
+            return _normalize_phone_number(cleaned_digits, raw)
+
+        # Phone
+        if t in ("phone", "mobile", "landline"):
+            cleaned_digits = _RE_CLEAN_PHONE_CHARS.sub("", raw)
+            return _normalize_phone_number(cleaned_digits, raw)
+
+        # Other / Generic
+        if t in ("other", "custom"):
+            clean_val = raw.strip()
+            if not clean_val or len(clean_val) < 2:
+                raise InvalidIdentifierError("Identifier is too short or empty")
+            return NormalizedResult(
+                normalized_value=clean_val,
+                identifier_type=IdentifierType("other", "OTHER"),
+                raw_value=raw
+            )
+
+    # Autodetect when expected_type is None
+    # 1. SMS Sender ID
+    if len(raw) == 6 and raw.isalpha() and raw.isupper():
+        return NormalizedResult(
+            normalized_value=raw.upper(),
+            identifier_type=IdentifierType("sender_id", "SMS_SENDER"),
+            raw_value=raw
+        )
+    if "-" in raw and any(c.isupper() for c in raw) and len(raw) <= 10:
+        sender_match = _RE_SMS_SENDER.match(raw)
+        if sender_match and sender_match.group(1).isupper():
+            return NormalizedResult(
+                normalized_value=sender_match.group(1).upper(),
+                identifier_type=IdentifierType("sender_id", "SMS_SENDER"),
+                raw_value=raw
+            )
+
+    # 2. Bank Account with IFSC (e.g. SBIN0001234:12345678901) or explicit ACC: prefix
+    if ":" in raw and not (raw.startswith("http://") or raw.startswith("https://")):
+        if raw.upper().startswith("ACC:"):
+            return _normalize_bank_account(raw)
+        parts = raw.split(":", 1)
+        if len(parts) == 2 and len(parts[0]) == 11 and parts[1].isdigit():
+            return _normalize_bank_account(raw)
+
+    # 3. Email Check (before UPI check to avoid confusion)
+    clean_email = raw.strip().lower()
+    if _RE_EMAIL.match(clean_email):
+        # Check if the domain has standard email extensions
+        tld = clean_email.split(".")[-1]
+        if len(tld) >= 2 and not clean_email.endswith("@upi"):
+            return NormalizedResult(
+                normalized_value=clean_email,
+                identifier_type=IdentifierType("email", "EMAIL"),
+                raw_value=raw
+            )
+
+    # 4. UPI ID Check
+    if "@" in raw:
+        if raw.startswith("@") or raw.endswith("@"):
+            raise InvalidIdentifierError(f"Invalid UPI ID missing username or handle: '{raw}'")
+        cleaned_upi = raw.strip().lower().replace(" ", "")
+        if _RE_UPI.match(cleaned_upi):
+            return NormalizedResult(
+                normalized_value=cleaned_upi,
+                identifier_type=IdentifierType("upi", "UPI_ID"),
+                raw_value=raw
+            )
+        raise InvalidIdentifierError(f"Invalid UPI ID format: '{raw}'")
+
+    # 5. WhatsApp Link
+    if "wa.me/" in raw.lower() or "api.whatsapp.com/" in raw.lower():
+        return _normalize_whatsapp(raw)
+
+    # 6. General URL Check
+    if raw.startswith("http://") or raw.startswith("https://") or ("." in raw and ("/" in raw or "www." in raw)):
+        try:
+            norm_url = _clean_url(raw)
+            return NormalizedResult(
+                normalized_value=norm_url,
+                identifier_type=IdentifierType("url", "URL"),
+                raw_value=raw
+            )
+        except Exception:
+            pass
+
+    # 7. Clean digits check for phone or long bank accounts
+    cleaned_digits = _RE_CLEAN_PHONE_CHARS.sub("", raw)
+
+    # Long digits (13-18 digits not starting with toll or phone country codes)
+    if cleaned_digits.isdigit() and 13 <= len(cleaned_digits) <= 18 and not cleaned_digits.startswith(("1800", "1860")):
+        return NormalizedResult(
+            normalized_value=f"ACC:{cleaned_digits}",
+            identifier_type=IdentifierType("bank_account", "BANK_ACCOUNT"),
+            raw_value=raw
+        )
+
+    # 8. Standard Phone normalization
+    return _normalize_phone_number(cleaned_digits, raw)
 
 
 def mask_identifier(normalized_value: str, identifier_type: str = "phone") -> str:
@@ -298,9 +533,8 @@ def mask_identifier(normalized_value: str, identifier_type: str = "phone") -> st
     Masks the identifier according to PRD page 10 rules until >= 3 distinct reporters.
     Also supports legacy test suite formats when specific type is passed.
     """
+    # 0. Specific type handling for legacy tests when explicitly passed as literal string
     digits = re.sub(r"\D", "", normalized_value)
-
-    # Specific type handling for legacy tests when explicitly passed as literal string
     if type(identifier_type) is str and identifier_type == "PHONE_MOBILE":
         if digits.startswith("91") and len(digits) == 12:
             ten = digits[2:]
@@ -318,21 +552,50 @@ def mask_identifier(normalized_value: str, identifier_type: str = "phone") -> st
             suffix = user[-2:] if len(user) >= 4 else ""
             return f"{prefix}***{suffix}@{domain}"
 
-    # Official PRD page 10 rules:
-    # 1. Phone: 98XXXXX210
-    if digits.startswith("91") and len(digits) == 12:
-        ten = digits[2:]
-        return f"{ten[:2]}XXXXX{ten[-3:]}"
-    elif len(digits) == 10:
-        return f"{digits[:2]}XXXXX{digits[-3:]}"
+    # 1. Bank Account: ACC:1234567890 -> ACC:XXXXXX7890; IFSC:1234567890 -> IFSC:XXXXXX7890
+    if normalized_value.startswith("ACC:"):
+        acc = normalized_value[4:]
+        if len(acc) > 4:
+            masked = "X" * (len(acc) - 4) + acc[-4:]
+        else:
+            masked = "****"
+        return f"ACC:{masked}"
 
-    # 2. UPI: r***@okaxis
+    if ":" in normalized_value and not (normalized_value.startswith("http://") or normalized_value.startswith("https://")):
+        parts = normalized_value.split(":", 1)
+        if len(parts) == 2 and len(parts[0]) == 11:
+            ifsc, acc = parts
+            if len(acc) > 4:
+                masked = "X" * (len(acc) - 4) + acc[-4:]
+            else:
+                masked = "****"
+            return f"{ifsc}:{masked}"
+
+    # 2. WhatsApp links: https://wa.me/919876543210 -> https://wa.me/91XXXXX210
+    if normalized_value.startswith("https://wa.me/"):
+        path = normalized_value[len("https://wa.me/"):]
+        digits = re.sub(r"\D", "", path)
+        if len(digits) >= 10:
+            masked_phone = f"{digits[:2]}XXXXX{digits[-3:]}"
+            return f"https://wa.me/{masked_phone}"
+        return f"https://wa.me/{path[:3]}***"
+
+    # 3. Email: user@domain.com -> u***r@domain.com
+    if "@" in normalized_value and "." in normalized_value.split("@")[-1] and not normalized_value.endswith("@upi"):
+        user, domain = normalized_value.split("@", 1)
+        if len(user) <= 2:
+            masked_user = f"{user[0]}***" if user else "***"
+        else:
+            masked_user = f"{user[0]}***{user[-1]}"
+        return f"{masked_user}@{domain}"
+
+    # 4. UPI: r***@okaxis
     if "@" in normalized_value:
         user, domain = normalized_value.split("@", 1)
         first_char = user[0] if user else "u"
         return f"{first_char}***@{domain}"
 
-    # 3. URL: sbi***.in/...
+    # 5. URL: sbi***.in/...
     if normalized_value.startswith("http://") or normalized_value.startswith("https://"):
         parsed = urlparse(normalized_value)
         host = parsed.netloc
@@ -344,7 +607,14 @@ def mask_identifier(normalized_value: str, identifier_type: str = "phone") -> st
             return f"{prefix}***.{tld}/..."
         return f"{host[:3]}***.com/..."
 
-    # 4. Sender ID: HD****
+    # 6. Phone: 98XXXXX210
+    if digits.startswith("91") and len(digits) == 12:
+        ten = digits[2:]
+        return f"{ten[:2]}XXXXX{ten[-3:]}"
+    elif len(digits) == 10:
+        return f"{digits[:2]}XXXXX{digits[-3:]}"
+
+    # 8. Sender ID: HD****
     if identifier_type in ("sender_id", "sender") or (len(normalized_value) == 6 and normalized_value.isalpha()):
         return f"{normalized_value[:2]}****"
 

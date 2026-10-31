@@ -21,6 +21,7 @@ def get_alerts(
     1. SPIKE: reports in last 24h >= double the daily average of the preceding 7 days, AND >= 5 (or configured threshold).
     2. NEW_TYPE: scam type reported in last 24h that was not seen in that area during the prior 30 days.
     Also returns alerts for all active areas when pincode is not provided.
+    Preserves meaningful scam category/type for both SPIKE and NEW_TYPE alerts.
     """
     now = datetime.now(timezone.utc)
     t_24h = (now - timedelta(hours=24)).isoformat()
@@ -67,12 +68,25 @@ def get_alerts(
             count_preceding_7d = cur.fetchone()[0]
             baseline_per_day = round(count_preceding_7d / 7.0, 1)
 
+            # Determine top reported scam type in this window for this spike
+            cur.execute(
+                """
+                SELECT scam_type, COUNT(*) as cnt FROM reports
+                WHERE pincode = ? AND occurred_at >= ? AND status = 'ACCEPTED'
+                GROUP BY scam_type ORDER BY cnt DESC LIMIT 1
+                """,
+                (target_pin, t_24h)
+            )
+            top_st_row = cur.fetchone()
+            top_scam_type = top_st_row[0] if (top_st_row and top_st_row[0] != "other") else (top_st_row[0] if top_st_row else None)
+
             # Condition: at least double daily average AND at least threshold (PRD: 5, Dev: settings.SPIKE_REPORT_THRESHOLD)
             min_thresh = min(5, settings.SPIKE_REPORT_THRESHOLD)
             if count_24h >= min_thresh and (count_24h >= 2 * baseline_per_day or baseline_per_day == 0):
                 alerts_list.append(AlertItem(
                     type="SPIKE",
                     pincode=target_pin,
+                    scam_type=top_scam_type,
                     window="24h",
                     count=count_24h,
                     baseline_per_day=baseline_per_day,
@@ -93,6 +107,8 @@ def get_alerts(
             recent_scam_types = [row[0] for row in cur.fetchall()]
 
             for stype in recent_scam_types:
+                if not stype or stype == "other":
+                    continue
                 cur.execute(
                     """
                     SELECT COUNT(*) FROM reports
@@ -114,10 +130,6 @@ def get_alerts(
                     ))
 
         # Check any recorded alerts in alerts table for this identifier or pincode.
-        # Only include stored alerts that are NOT already covered by the computed
-        # real-time logic above (same type + pincode pair).  Also skip stored
-        # alerts that lack a pincode — they are identifier-level artifacts from
-        # the alert_engine and are already represented by the computed logic.
         if target_pin_arg:
             cur.execute("SELECT type, pincode, scam_type, window, count, baseline_per_day, severity FROM alerts WHERE pincode = ?", (target_pin_arg,))
         else:

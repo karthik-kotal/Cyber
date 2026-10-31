@@ -1,3 +1,4 @@
+import re
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Query, Request, HTTPException
 from app.database import get_db_connection
@@ -8,16 +9,20 @@ from app.trust_engine import evaluate_trust
 
 router = APIRouter()
 
+VALID_LOOKUP_TYPES = {
+    "phone", "upi", "url", "sender_id", "bank_account", "whatsapp", "email", "sms", "website", "other"
+}
+
 
 @router.get("/lookup", response_model=LookupResponse)
 def lookup_identifier(
     identifier: Optional[str] = Query(None, description="Identifier value to look up"),
-    type: Optional[str] = Query(None, description="phone, upi, url, sender_id"),
+    type: Optional[str] = Query(None, description="phone, upi, url, sender_id, bank_account, whatsapp, email, sms"),
     value: Optional[str] = Query(None, description="Alias for identifier parameter")
 ):
     """
     GET /lookup?type=phone&value=%2B91%2098765%2043210
-    Checks a phone number, UPI ID, link or SMS sender.
+    Checks a phone number, UPI ID, link, SMS sender, or bank account.
     - Returns 400 on invalid identifier format.
     - Returns 200 with NO_REPORTS for unreported numbers.
     - Returns 200 with VERIFIED_BUSINESS for official verified businesses.
@@ -30,20 +35,62 @@ def lookup_identifier(
         raw_val = identifier
     elif isinstance(value, str):
         raw_val = value
-    elif isinstance(type, str) and type not in ("phone", "upi", "url", "sender_id"):
+    elif isinstance(type, str) and type.lower() not in VALID_LOOKUP_TYPES:
         raw_val = type
 
-    expected_type = type if isinstance(type, str) and type in ("phone", "upi", "url", "sender_id") else None
+    expected_type = None
+    if isinstance(type, str) and type.lower() in VALID_LOOKUP_TYPES:
+        expected_type = type.lower()
 
     if not raw_val:
         raise InvalidIdentifierError("Missing lookup identifier value")
 
-    norm = normalize_identifier(raw_val, expected_type)
-    normalized_id = norm.normalized_value
-    id_type = norm.identifier_type
+    # If raw_val explicitly starts with ACC: or IFSC:
+    if raw_val.upper().startswith("ACC:") or (":" in raw_val and len(raw_val.split(":")[0]) == 11):
+        expected_type = "bank_account"
+
+    if not expected_type:
+        try:
+            with get_db_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT identifier, identifier_type FROM cases WHERE identifier = ?", (raw_val,))
+                case_row = cur.fetchone()
+                if case_row:
+                    expected_type = case_row[1]
+        except Exception:
+            pass
+
+    # Normalize identifier
+    try:
+        norm = normalize_identifier(raw_val, expected_type)
+        normalized_id = norm.normalized_value
+        id_type = norm.identifier_type
+    except InvalidIdentifierError as e:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT identifier, identifier_type FROM cases WHERE identifier = ?", (raw_val,))
+            case_row = cur.fetchone()
+            if case_row:
+                normalized_id = case_row[0]
+                id_type = case_row[1] or "other"
+            else:
+                raise e
 
     with get_db_connection() as conn:
         cur = conn.cursor()
+
+        # If looked up as 10-digit without explicit type, check if a bank account exists under ACC:{digits}
+        # when no phone report exists
+        digits_only = re.sub(r"\D", "", raw_val)
+        if expected_type is None and 9 <= len(digits_only) <= 18:
+            cur.execute("SELECT COUNT(*) FROM reports WHERE identifier = ?", (normalized_id,))
+            phone_count = cur.fetchone()[0]
+            if phone_count == 0:
+                acc_cand = f"ACC:{digits_only}"
+                cur.execute("SELECT COUNT(*) FROM reports WHERE identifier = ?", (acc_cand,))
+                if cur.fetchone()[0] > 0:
+                    normalized_id = acc_cand
+                    id_type = "bank_account"
 
         # 1. Check verified business
         cur.execute(
@@ -166,7 +213,6 @@ def lookup_identifier(
 @router.get("/lookup/{identifier:path}", response_model=LookupResponse)
 def lookup_identifier_by_path(
     identifier: str,
-    type: Optional[str] = Query(None, description="phone, upi, url, sender_id")
+    type: Optional[str] = Query(None, description="phone, upi, url, sender_id, bank_account, whatsapp, email, sms")
 ):
     return lookup_identifier(identifier=identifier, type=type)
-

@@ -1,11 +1,12 @@
 import base64
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from app.database import get_db_connection
 from app.schemas import ReportCreate, ReportResponse
-from app.normalize import normalize_identifier, normalize_scam_type, InvalidIdentifierError
+from app.normalize import normalize_identifier, normalize_scam_type, mask_identifier, InvalidIdentifierError
 from app.areas import is_valid_pincode, get_area_by_pincode, resolve_pincode_area
 from app.privacy import hash_reporter_id, hash_ip_prefix, compute_note_fingerprint
 from app.trust_engine import evaluate_trust
@@ -18,6 +19,18 @@ from app.evidence.tx_matcher import extract_and_hash_tx_ref
 
 router = APIRouter()
 
+SUPPORTED_CATEGORIES = {
+    "PHONE",
+    "BANK_ACCOUNT",
+    "UPI",
+    "URL",
+    "WEBSITE",
+    "WHATSAPP",
+    "SMS",
+    "EMAIL",
+    "OTHER",
+}
+
 
 @router.post("/reports", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/report", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
@@ -25,20 +38,111 @@ def submit_report(payload: ReportCreate, request: Request):
     """
     POST /reports
     Receives one scam report from judge test tool or user.
-    Enforces exact PRD validation, normalization, and response contract:
+    Enforces exact PRD validation, category preservation, normalization, and response contract:
     - 201 with {"report_id": "...", "case_id": "...", "merged": True/False}
-    - 400 with {"error": "..."} on invalid identifier, area code or time
+    - 400 with {"error": "..."} on invalid identifier, area code, unsupported category, or time
     """
     raw_ident = payload.identifier_value or payload.identifier
     if not raw_ident:
         raise InvalidIdentifierError("Missing identifier_value")
 
-    # 1. Normalize identifier (raises InvalidIdentifierError on junk/invalid)
-    norm = normalize_identifier(raw_ident, payload.identifier_type)
+    # 1. Category validation & determination
+    category = None
+    if payload.category:
+        clean_cat = payload.category.strip().upper()
+        if clean_cat not in SUPPORTED_CATEGORIES:
+            raise InvalidIdentifierError(
+                f"Unsupported report category: '{payload.category}'. Supported categories are: {', '.join(sorted(SUPPORTED_CATEGORIES))}"
+            )
+        category = clean_cat
+    elif payload.channel and payload.channel.strip().upper() in SUPPORTED_CATEGORIES:
+        category = payload.channel.strip().upper()
+    elif payload.identifier_type:
+        id_t = payload.identifier_type.strip().lower()
+        if id_t in ("bank_account", "bank"):
+            category = "BANK_ACCOUNT"
+        elif id_t in ("whatsapp", "wa"):
+            category = "WHATSAPP"
+        elif id_t in ("upi",):
+            category = "UPI"
+        elif id_t in ("url", "website"):
+            category = "URL"
+        elif id_t in ("email",):
+            category = "EMAIL"
+        elif id_t in ("sms", "sender_id"):
+            category = "SMS"
+        elif id_t in ("phone",):
+            category = "PHONE"
+        elif id_t in ("other",):
+            category = "OTHER"
+
+    # Derive expected identifier type from category if not explicitly given
+    expected_type = payload.identifier_type
+    if not expected_type and category:
+        category_to_type = {
+            "BANK_ACCOUNT": "bank_account",
+            "WHATSAPP": "whatsapp",
+            "UPI": "upi",
+            "URL": "url",
+            "WEBSITE": "url",
+            "EMAIL": "email",
+            "SMS": "sms",
+            "PHONE": "phone",
+            "OTHER": "other",
+        }
+        expected_type = category_to_type.get(category)
+
+    # 2. Normalize identifier (raises InvalidIdentifierError on junk/invalid)
+    norm = normalize_identifier(raw_ident, expected_type)
     normalized_id = norm.normalized_value
     id_type = norm.identifier_type
 
-    # 2. Area code (pincode) validation
+    # Fallback category if still not set
+    if not category:
+        type_to_cat = {
+            "bank_account": "BANK_ACCOUNT",
+            "whatsapp": "WHATSAPP",
+            "upi": "UPI",
+            "url": "URL",
+            "email": "EMAIL",
+            "sms": "SMS",
+            "sender_id": "SMS",
+            "phone": "PHONE",
+        }
+        category = type_to_cat.get(id_type, "OTHER")
+
+    # 3. Scam Type derivation (never default valid categories to "other")
+    if payload.scam_type:
+        scam_type = normalize_scam_type(payload.scam_type)
+    else:
+        category_default_scam_type = {
+            "BANK_ACCOUNT": "bank-fraud",
+            "WHATSAPP": "whatsapp-scam",
+            "UPI": "upi-refund-qr",
+            "URL": "fake-kyc-link",
+            "WEBSITE": "fake-kyc-link",
+            "SMS": "sms-fraud",
+            "EMAIL": "phishing",
+            "PHONE": "phone-scam",
+            "OTHER": "other",
+        }
+        scam_type = category_default_scam_type.get(category, "other")
+
+    # 4. Channel derivation
+    category_default_channel = {
+        "BANK_ACCOUNT": "Bank transfer",
+        "WHATSAPP": "WhatsApp",
+        "UPI": "UPI",
+        "URL": "Website",
+        "WEBSITE": "Website",
+        "SMS": "SMS",
+        "EMAIL": "Email",
+        "PHONE": "Phone call",
+        "OTHER": "Other",
+    }
+    channel = payload.channel or category_default_channel.get(category, "Phone call")
+
+    # 5. Area code (pincode) validation
     area_info = None
     pincode_clean = str(payload.pincode).strip() if payload.pincode is not None else None
     if pincode_clean:
@@ -49,21 +153,17 @@ def submit_report(payload: ReportCreate, request: Request):
     locality = payload.locality or (area_info["locality"] if area_info else None)
     city = payload.city or (area_info["city"] if area_info else None)
 
-    # 3. Time validation
+    # 6. Time validation
     now_iso = datetime.now(timezone.utc).isoformat()
     occurred_at_str = payload.occurred_at or payload.reported_at or now_iso
     try:
-        # Validate timestamp
         datetime.fromisoformat(occurred_at_str.replace("Z", "+00:00"))
     except Exception:
         raise InvalidIdentifierError(f"Invalid time format: '{occurred_at_str}'")
 
     reported_at_str = payload.reported_at or occurred_at_str
 
-    # 4. Normalize scam_type (unknown accepted as 'other')
-    scam_type = normalize_scam_type(payload.scam_type)
-
-    # 5. Extract simulated reporter identity from payload (Do NOT replace with laptop identity)
+    # 7. Reporter identity hashing (preserves anonymous simulation)
     raw_reporter = payload.reporter_id or (request.client.host if request.client else "anonymous")
     reporter_hmac = hash_reporter_id(raw_reporter)
 
@@ -74,7 +174,7 @@ def submit_report(payload: ReportCreate, request: Request):
     report_id = payload.report_id or str(uuid.uuid4())
     loss_amount = payload.amount_lost_inr or payload.loss_amount or 0.0
 
-    # 6. Optional Evidence File Processing
+    # 8. Optional Evidence File Processing
     file_sha256 = None
     phash_val = None
     ocr_fp = None
@@ -109,7 +209,7 @@ def submit_report(payload: ReportCreate, request: Request):
             if ocr_text:
                 ocr_fp = compute_ocr_fingerprint(ocr_text)
 
-    # 7. Optional Transaction Reference Processing
+    # 9. Optional Transaction Reference Processing
     tx_extracted = extract_and_hash_tx_ref(payload.transaction_ref)
     tx_ref_hmac = tx_extracted.tx_ref_hmac if tx_extracted else None
     tx_type = tx_extracted.ref_type if tx_extracted else "UNKNOWN"
@@ -168,20 +268,20 @@ def submit_report(payload: ReportCreate, request: Request):
             )
             is_challenged = cur.fetchone()[0] > 0
 
-            # Insert report into reports table
+            # Insert report into reports table (including category)
             conn.execute(
                 """
                 INSERT INTO reports (
-                    id, identifier, identifier_type, channel, scam_type,
+                    id, identifier, identifier_type, channel, category, scam_type,
                     occurred_at, reported_at, reporter_id, reporter_hmac,
                     ip_prefix, ip_prefix_hmac, pincode, locality, city,
                     note, note_fingerprint, has_screenshot, amount_lost_inr,
                     loss_amount, evidence_url, file_sha256, phash, tx_ref_hmac,
                     ocr_fingerprint, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', ?)
                 """,
                 (
-                    report_id, normalized_id, id_type, payload.channel or "Phone call", scam_type,
+                    report_id, normalized_id, id_type, channel, category, scam_type,
                     occurred_at_str, reported_at_str, raw_reporter, reporter_hmac,
                     raw_ip_prefix, ip_prefix_hmac, pincode_clean, locality, city,
                     payload.note, note_fp, 1 if payload.has_screenshot else 0, loss_amount,
@@ -253,7 +353,6 @@ def submit_report(payload: ReportCreate, request: Request):
             # Generate alerts if condition met
             check_and_generate_alerts(conn, normalized_id, scam_type, pincode_clean, occurred_at_str)
 
-    from app.normalize import mask_identifier
     return ReportResponse(
         report_id=report_id,
         id=report_id,

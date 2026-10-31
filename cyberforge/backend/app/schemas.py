@@ -12,8 +12,9 @@ class ReportCreate(BaseModel):
     reporter_id: Optional[str] = Field(None, description="Test tool or user simulated reporter ID")
     ip_prefix: Optional[str] = Field(None, description="Network prefix (e.g. 103.21.58)")
     channel: Optional[str] = Field(None, description="Phone call, SMS or WhatsApp, QR code, Fake website, etc.")
+    category: Optional[str] = Field(None, description="Category: PHONE, BANK_ACCOUNT, UPI, URL, WHATSAPP, SMS, EMAIL, OTHER")
     scam_type: Optional[str] = Field(None, description="Scam type from Appendix C or other")
-    identifier_type: Optional[str] = Field(None, description="phone, upi, url, sender_id")
+    identifier_type: Optional[str] = Field(None, description="phone, upi, url, sender_id, bank_account, whatsapp, email, sms")
     identifier_value: Optional[str] = Field(None, description="Raw target identifier value")
     
     # Backward-compatible alias
@@ -39,10 +40,13 @@ class ReportResponse(BaseModel):
     case_id: str
     merged: bool
     # Additional optional fields for rich clients
+    id: Optional[str] = None
     status: Optional[str] = "ACCEPTED"
     case_status: Optional[str] = None
     distinct_reporters: Optional[int] = None
+    display_value: Optional[str] = None
     message: Optional[str] = None
+    created_at: Optional[str] = None
     evidence_duplicate_detected: Optional[bool] = False
     tx_ref_duplicate_detected: Optional[bool] = False
     similarity_risk_signals: Optional[Dict[str, Any]] = None
@@ -141,7 +145,7 @@ class AlertsResponse(BaseModel):
 
 class ChallengeCreate(BaseModel):
     report_id: Optional[str] = None
-    identifier_type: Optional[str] = Field("phone", description="phone, upi, url, sender_id")
+    identifier_type: Optional[str] = Field("phone", description="phone, upi, url, sender_id, bank_account, whatsapp, email, sms")
     identifier_value: Optional[str] = Field(None, description="Disputed identifier value")
     identifier: Optional[str] = Field(None, description="Alias for identifier_value")
     claimant_name: Optional[str] = Field(None, description="Business or claimant name")
@@ -149,7 +153,7 @@ class ChallengeCreate(BaseModel):
     contact_email: Optional[str] = Field(None, description="Contact email")
     proof_note: Optional[str] = Field(None, description="Proof / justification notes")
     reason: Optional[str] = Field(None, description="Alias for proof_note")
-    proof_url: Optional[str] = Field(None, description="Optional proof document URL")
+    proof_url: Optional[str] = None
 
 
 class StatusString(str):

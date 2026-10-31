@@ -73,6 +73,7 @@ def init_db(db_path: str = None) -> None:
         existing_cols = {row[1] for row in cur.fetchall()}
         new_cols = [
             ("channel", "TEXT"),
+            ("category", "TEXT"),
             ("reported_at", "TEXT"),
             ("reporter_id", "TEXT"),
             ("ip_prefix", "TEXT"),
