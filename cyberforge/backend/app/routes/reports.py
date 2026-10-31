@@ -40,10 +40,11 @@ def submit_report(payload: ReportCreate, request: Request):
 
     # 2. Area code (pincode) validation
     area_info = None
-    if payload.pincode:
-        if not is_valid_pincode(payload.pincode):
+    pincode_clean = str(payload.pincode).strip() if payload.pincode is not None else None
+    if pincode_clean:
+        if not is_valid_pincode(pincode_clean):
             raise InvalidIdentifierError(f"Invalid area code / pincode '{payload.pincode}'")
-        area_info = get_area_by_pincode(payload.pincode)
+        area_info = get_area_by_pincode(pincode_clean)
 
     locality = payload.locality or (area_info["locality"] if area_info else None)
     city = payload.city or (area_info["city"] if area_info else None)
@@ -182,7 +183,7 @@ def submit_report(payload: ReportCreate, request: Request):
                 (
                     report_id, normalized_id, id_type, payload.channel or "Phone call", scam_type,
                     occurred_at_str, reported_at_str, raw_reporter, reporter_hmac,
-                    raw_ip_prefix, ip_prefix_hmac, payload.pincode, locality, city,
+                    raw_ip_prefix, ip_prefix_hmac, pincode_clean, locality, city,
                     payload.note, note_fp, 1 if payload.has_screenshot else 0, loss_amount,
                     loss_amount, payload.evidence_url, file_sha256, phash_val, tx_ref_hmac,
                     ocr_fp, now_iso
@@ -228,7 +229,7 @@ def submit_report(payload: ReportCreate, request: Request):
                     """,
                     (
                         occurred_at_str, len(all_reports), distinct_reps, verdict,
-                        scam_type, payload.pincode, 1 if is_challenged else 0,
+                        scam_type, pincode_clean, 1 if is_challenged else 0,
                         now_iso, normalized_id
                     )
                 )
@@ -244,13 +245,13 @@ def submit_report(payload: ReportCreate, request: Request):
                     (
                         normalized_id, id_type, occurred_at_str, occurred_at_str,
                         len(all_reports), distinct_reps, verdict,
-                        scam_type, payload.pincode, 1 if is_challenged else 0,
+                        scam_type, pincode_clean, 1 if is_challenged else 0,
                         now_iso
                     )
                 )
 
             # Generate alerts if condition met
-            check_and_generate_alerts(conn, normalized_id, scam_type, payload.pincode, occurred_at_str)
+            check_and_generate_alerts(conn, normalized_id, scam_type, pincode_clean, occurred_at_str)
 
     from app.normalize import mask_identifier
     return ReportResponse(

@@ -44,7 +44,7 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
       const payload = {
         channel,
         identifier: identifier.trim(),
-        pincode: p.length > 0 ? Number(p) : null,
+        pincode: p.length > 0 ? p : null,
       };
       setBusy(true);
       try {

@@ -121,7 +121,7 @@ export interface ReportPayload {
   identifier?: string | null;
   identifier_value?: string | null;
   identifier_type?: string | null;
-  pincode?: string | number | null;
+  pincode?: string | null;
   locality?: string | null;
   city?: string | null;
   note?: string | null;

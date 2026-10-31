@@ -113,26 +113,33 @@ def get_alerts(
                         description=f"First report of '{stype}' in 30 days"
                     ))
 
-        # Check any recorded alerts in alerts table for this identifier or pincode
+        # Check any recorded alerts in alerts table for this identifier or pincode.
+        # Only include stored alerts that are NOT already covered by the computed
+        # real-time logic above (same type + pincode pair).  Also skip stored
+        # alerts that lack a pincode — they are identifier-level artifacts from
+        # the alert_engine and are already represented by the computed logic.
         if target_pin_arg:
             cur.execute("SELECT type, pincode, scam_type, window, count, baseline_per_day, severity FROM alerts WHERE pincode = ?", (target_pin_arg,))
         else:
-            cur.execute("SELECT type, pincode, scam_type, window, count, baseline_per_day, severity FROM alerts")
+            cur.execute("SELECT type, pincode, scam_type, window, count, baseline_per_day, severity FROM alerts WHERE pincode IS NOT NULL AND pincode != ''")
         for r in cur.fetchall():
-            # Avoid duplicate if already calculated
-            if not any(a.type == r["type"] and a.pincode == r["pincode"] and a.scam_type == r["scam_type"] for a in alerts_list):
-                alerts_list.append(AlertItem(
-                    type=r["type"],
-                    pincode=r["pincode"],
-                    scam_type=r["scam_type"],
-                    window=r["window"] or "24h",
-                    count=r["count"],
-                    baseline_per_day=r["baseline_per_day"],
-                    severity=r["severity"],
-                    title=f"{r['type']} Alert: Pincode {r['pincode']}",
-                    body=f"Alert recorded for pincode {r['pincode']} ({r['scam_type'] or 'general'}).",
-                    description=f"{r['type']} alert"
-                ))
+            stored_pin = r["pincode"]
+            stored_type = r["type"]
+            # Skip if a computed alert already covers this type+pincode pair
+            if any(a.type == stored_type and a.pincode == stored_pin for a in alerts_list):
+                continue
+            alerts_list.append(AlertItem(
+                type=stored_type,
+                pincode=stored_pin,
+                scam_type=r["scam_type"],
+                window=r["window"] or "24h",
+                count=r["count"],
+                baseline_per_day=r["baseline_per_day"],
+                severity=r["severity"],
+                title=f"{stored_type} Alert: Pincode {stored_pin}",
+                body=f"Alert recorded for pincode {stored_pin} ({r['scam_type'] or 'general'}).",
+                description=f"{stored_type} alert"
+            ))
 
     # Filter by alert_type if requested
     if isinstance(alert_type, str) and alert_type:

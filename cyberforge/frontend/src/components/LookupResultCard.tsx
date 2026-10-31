@@ -69,9 +69,22 @@ export function LookupResultCard({
       </div>
 
       <dl className="divide-y divide-slate-100 px-4 py-2">
-        <Row label={get(lang, 'reports')}>
-          {counts(result.report_count)} {get(lang, 'reports')} · {counts(result.distinct_reporters)}{' '}
-          {get(lang, 'reporters')}
+        <Row label="Total Reports">
+          {counts(result.report_count)} {get(lang, 'reports')}
+        </Row>
+        <Row label="Distinct Reporters">
+          <span className="inline-flex items-center gap-1.5 flex-wrap justify-end">
+            {counts(result.distinct_reporters)}{' '}
+            {result.distinct_reporters === 1 ? 'person' : get(lang, 'reporters')}
+            {typeof result.distinct_reporters === 'number' &&
+             typeof result.report_count === 'number' &&
+             result.report_count > 1 &&
+             result.distinct_reporters === 1 ? (
+              <span className="block w-full text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 mt-0.5 text-right">
+                Single reporter — not independently confirmed
+              </span>
+            ) : null}
+          </span>
         </Row>
         {result.scam_type ? (
           <Row label="Type">{result.scam_type}</Row>

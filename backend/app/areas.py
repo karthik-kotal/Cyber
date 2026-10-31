@@ -32,16 +32,16 @@ APPENDIX_B_AREAS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def get_area_by_pincode(pincode: Optional[str]) -> Optional[Dict[str, Any]]:
-    if not pincode:
+def get_area_by_pincode(pincode: Optional[Any]) -> Optional[Dict[str, Any]]:
+    if pincode is None:
         return None
-    return APPENDIX_B_AREAS.get(pincode.strip())
+    return APPENDIX_B_AREAS.get(str(pincode).strip())
 
 
-def is_valid_pincode(pincode: Optional[str]) -> bool:
-    if not pincode:
+def is_valid_pincode(pincode: Optional[Any]) -> bool:
+    if pincode is None:
         return False
-    p = pincode.strip()
+    p = str(pincode).strip()
     return len(p) == 6 and p.isdigit() and p[0] in "123456789"
 
 

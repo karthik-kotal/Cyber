@@ -48,4 +48,29 @@ describe('ReportPage', () => {
     expect(screen.getByText(/Report received/i)).toBeInTheDocument();
     expect(screen.getByText('+91-****-1234')).toBeInTheDocument();
   });
+
+  it('submits report with string pincode without converting to number', async () => {
+    mockedSubmitReport.mockResolvedValue({
+      report_id: 'r_456',
+      case_id: 'case_456',
+      display_value: '+91-****-8632',
+      merged: false,
+    });
+    render(<ReportPage lang="en" />);
+    fireEvent.change(screen.getByLabelText(/Phone, UPI ID or link/i), {
+      target: { value: '9108128632' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Pincode \(optional\)/i), {
+      target: { value: '560050' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Submit report/i }));
+    await act(async () => {});
+    expect(mockedSubmitReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: '9108128632',
+        pincode: '560050',
+      })
+    );
+    expect(screen.getByText(/Report received/i)).toBeInTheDocument();
+  });
 });

@@ -19,7 +19,7 @@ class ReportCreate(BaseModel):
     # Backward-compatible alias
     identifier: Optional[str] = Field(None, description="Target identifier alias")
     
-    pincode: Optional[str] = Field(None, description="6-digit area code from Appendix B")
+    pincode: Optional[Union[str, int]] = Field(None, description="6-digit area code from Appendix B")
     locality: Optional[str] = Field(None, description="Locality name")
     city: Optional[str] = Field(None, description="City name")
     note: Optional[str] = Field(None, description="Report description")
