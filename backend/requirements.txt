@@ -1,0 +1,16 @@
+# Core Backend & API
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.6.0
+
+# Testing
+pytest>=8.0.0
+httpx>=0.27.0
+
+# Evidence Analysis & Perceptual Hashing
+numpy>=1.24.0
+python-multipart>=0.0.9
+
+# Optional Enhanced Image & OCR Capabilities (production deployment)
+# pillow>=10.0.0
+# pytesseract>=0.3.10
