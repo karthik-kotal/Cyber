@@ -16,6 +16,7 @@ class LicensePayload(BaseModel):
     expires_at: Optional[str] = Field(None, description="ISO timestamp when the license expires")
     signature: Optional[str] = Field(None, description="Cryptographic signature protecting the license")
     license_key: Optional[str] = Field(None, description="Alternative single key string")
+    demo_type: Optional[str] = Field(None, description="Demo preset: short_5m, long_1y, expired")
 
 
 def generate_license_signature(licensee: str, expires_at: str) -> str:
@@ -92,7 +93,38 @@ def upload_license(payload: LicensePayload):
     expires_at = payload.expires_at
     signature = payload.signature
 
+    # Handle demo preset shortcuts
+    if payload.demo_type:
+        now = datetime.now(timezone.utc)
+        target_licensee = payload.licensee or "Demo Bank"
+        if payload.demo_type in ("short", "short_5m", "5m"):
+            expires_at = (now + timedelta(minutes=5)).isoformat()
+        elif payload.demo_type in ("long", "long_1y", "1y"):
+            expires_at = (now + timedelta(days=365)).isoformat()
+        elif payload.demo_type in ("expired", "already_expired"):
+            expires_at = (now - timedelta(minutes=1)).isoformat()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown demo preset: {payload.demo_type}")
+        licensee = target_licensee
+        signature = generate_license_signature(licensee, expires_at)
+
     if payload.license_key and not (licensee and expires_at and signature):
+        raw_upper = payload.license_key.strip().upper()
+        if raw_upper in ("DEMO:SHORT_5M", "DEMO:5M", "SHORT_5M", "SHORT"):
+            now = datetime.now(timezone.utc)
+            licensee = payload.licensee or "Demo Bank"
+            expires_at = (now + timedelta(minutes=5)).isoformat()
+            signature = generate_license_signature(licensee, expires_at)
+        elif raw_upper in ("DEMO:LONG_1Y", "DEMO:1Y", "LONG_1Y", "LONG"):
+            now = datetime.now(timezone.utc)
+            licensee = payload.licensee or "Demo Bank"
+            expires_at = (now + timedelta(days=365)).isoformat()
+            signature = generate_license_signature(licensee, expires_at)
+        elif raw_upper in ("DEMO:EXPIRED", "EXPIRED"):
+            now = datetime.now(timezone.utc)
+            licensee = payload.licensee or "Demo Bank"
+            expires_at = (now - timedelta(minutes=1)).isoformat()
+            signature = generate_license_signature(licensee, expires_at)
         raw_key = payload.license_key.strip()
         if raw_key.startswith("{") and raw_key.endswith("}"):
             try:
