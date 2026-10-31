@@ -102,3 +102,4 @@ In `backend/tests/test_prd_audit.py`, lines 17–33:
 ### Limitations & Honest Disclosure:
 - **Protection Scope:** Pre-registration protects against frivolous community mobbing. If a verified business account is compromised or legitimately involved in fraud, removal from the `verified_businesses` registry requires administrator action (`DELETE /api/admin/verified-businesses/{id}`).
 - **Privacy Assurance:** Public responses never reveal who submitted reports or their IP addresses.
+

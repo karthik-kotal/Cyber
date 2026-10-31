@@ -105,3 +105,4 @@ Because `distinct_reporters == 1 < 3`:
 - **Accounts Found:** 0 in persistent database; 22 in automated test fixtures.
 - **System Defense:** The anti-sybil engine passed all 22-bot cluster tests without false escalation.
 - **Final Security Finding:** The system successfully prevented 22 fake accounts from manipulating a phone number into `KNOWN_SCAM`.
+

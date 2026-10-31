@@ -1,0 +1,19 @@
+# Tools and temporary setup scripts
+tools/
+setup_*.py
+scripts/setup_*.py
+
+# Gradle and Android build outputs
+.gradle/
+**/build/
+**/local.properties
+*.apk
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+dist/

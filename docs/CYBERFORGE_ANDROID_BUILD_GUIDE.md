@@ -12,16 +12,31 @@
 
 ## 1. Executive Summary & Build State
 
-The CyberForge React/Vite web application has been packaged for Android using **Capacitor**.
+The CyberForge React/Vite web application has been packaged for Android using **Capacitor**, and the debug APK has been **successfully compiled**.
 - All dependencies (`@capacitor/core`, `@capacitor/cli`, `@capacitor/android`) are installed.
 - The native Android directory structure (`cyberforge/frontend/android`) is generated with `AndroidManifest.xml`, Gradle build configurations, and bundled production web assets.
 - In `cyberforge/frontend/src/services/api.ts`, the backend API base URL is **fully configurable at runtime** via `localStorage` or build-time via `.env` (`VITE_API_BASE_URL`), preventing the common Android issue where `localhost` resolves to the smartphone loopback interface.
+- **Generated APK:** `android/app/build/outputs/apk/debug/app-debug.apk`
+- **File Size:** **4,429,475 bytes (~4.22 MB)**
+- **Build Status:** **BUILD SUCCESSFUL** (Compiled via Gradle with OpenJDK 21 and Android SDK platform 34/36).
 
 ---
 
-## 2. Host Environment Audit & Diagnostic Findings
+## 2. Diagnosis & Resolution of Java / Gradle Compatibility
 
-During the local build verification on this workstation, the build environment was systematically inspected:
+During initial verification, running `.\gradlew.bat assembleDebug` failed with:
+1. `BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_' Unsupported class file major version 69`:
+   - Caused by Java 25 (class version 69) being unsupported by Gradle's Groovy parser.
+2. `Execution failed for task ':capacitor-android:compileDebugJavaWithJavac' > invalid source release: 21`:
+   - Caused when testing with JDK 17, because Capacitor 7 requires Java 21 compatibility.
+
+### Resolution Implemented:
+- Downloaded and configured portable **Eclipse Temurin OpenJDK 21** (`E:\cyber\tools\jdk-21`).
+- Downloaded and configured portable **Android Command-line Tools & SDK** (`E:\cyber\tools\android-sdk`) with:
+  - `platforms;android-34` & `platforms;android-36`
+  - `build-tools;34.0.0` & `build-tools;35.0.0`
+  - `platform-tools` (with `adb.exe`)
+- Rebuilt debug APK: **BUILD SUCCESSFUL in 26s**.
 
 | Tool / Requirement | Detected State | Status |
 | :--- | :--- | :--- |
@@ -31,18 +46,9 @@ During the local build verification on this workstation, the build environment w
 | **Capacitor Config** | `capacitor.config.ts` (`CyberForge`, `com.cyberforge.scammap`) | ✅ Configured |
 | **Web Production Build** | `tsc -b && vite build` (64 modules transformed, 0 errors) | ✅ Built |
 | **Native Android Project** | `cyberforge/frontend/android/` created with `gradlew.bat` | ✅ Generated |
-| **Java JDK Version** | **Java 25.0.2 LTS** (`C:\Program Files\Java\jdk-25.0.2`) | ⚠️ **Incompatible with Gradle 8** |
-| **Android SDK / ANDROID_HOME** | None installed on host (`ANDROID_HOME` is unset) | ⚠️ **Missing SDK** |
-
-### The Build Blocker Encountered:
-When running `.\gradlew.bat assembleDebug`, Gradle 8.14.3 failed with:
-```text
-FAILURE: Build failed with an exception.
-* What went wrong:
-BUG! exception in phase 'semantic analysis' in source unit '_BuildScript_' Unsupported class file major version 69
-> Unsupported class file major version 69
-BUILD FAILED in 1m 32s
-```
+| **Java JDK Version** | **Eclipse Temurin OpenJDK 21** (`E:\cyber\tools\jdk-21`) | ✅ Configured & Verified |
+| **Android SDK / ANDROID_HOME** | Installed in `E:\cyber\tools\android-sdk` (`platform-tools`, `android-34/36`) | ✅ Configured & Verified |
+| **Debug APK** | `android/app/build/outputs/apk/debug/app-debug.apk` (4.42 MB) | ✅ **Compiled & Verified** |
 **Root Cause:**
 - Class file major version `69` corresponds to **Java 25**.
 - Gradle 8.14.3 supports up to Java 24. Android Gradle Plugin (AGP) officially requires **JDK 17 or JDK 21**.
@@ -147,3 +153,4 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 | **Hindi Language Toggle** | ✅ Full UI translated | Pending device installation |
 | **Offline Handling** | ✅ Handled via API error banner | Pending device installation |
 | **Admin Operations** | ✅ 4-tab dashboard | Pending device installation |
+
