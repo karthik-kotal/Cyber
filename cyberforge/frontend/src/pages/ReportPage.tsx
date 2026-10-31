@@ -5,19 +5,12 @@ import { submitReport, ApiError } from '../services/api';
 import { ErrorState } from '../components/states/ErrorState';
 import { SCAM_CATEGORIES } from '../constants/scamCategories';
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
-
 export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
   const [channel, setChannel] = useState<ReportChannel>('UPI');
   const [selectedScamType, setSelectedScamType] = useState<string>('upi-refund-qr');
   const [identifier, setIdentifier] = useState('');
   const [pincode, setPincode] = useState('');
   const [description, setDescription] = useState('');
-  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState<string | null>(null);
-  const [evidenceBase64, setEvidenceBase64] = useState<string | null>(null);
-  const [evidenceFilename, setEvidenceFilename] = useState<string | null>(null);
-  const [evidenceFileSize, setEvidenceFileSize] = useState<number | null>(null);
-  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [submitted, setSubmitted] = useState<{
@@ -95,56 +88,6 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
     setSelectedScamType(channelToScamType[c] || 'other');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEvidenceError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    const allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
-
-    if (!allowed.includes(file.type) && (!ext || !allowedExts.includes(ext))) {
-      setEvidenceError('Unsupported file type. Please upload a JPG, JPEG, PNG, or WEBP image.');
-      e.target.value = '';
-      return;
-    }
-
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      setEvidenceError(
-        `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds maximum allowed limit of 5 MB.`
-      );
-      e.target.value = '';
-      return;
-    }
-
-    setEvidenceFilename(file.name);
-    setEvidenceFileSize(file.size);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setEvidencePreviewUrl(result);
-      setEvidenceBase64(result);
-    };
-    reader.onerror = () => {
-      setEvidenceError('Failed to read image file. Please try selecting again.');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleRemoveImage = () => {
-    setEvidencePreviewUrl(null);
-    setEvidenceBase64(null);
-    setEvidenceFilename(null);
-    setEvidenceFileSize(null);
-    setEvidenceError(null);
-    const inputEl = document.getElementById('report-evidence-file') as HTMLInputElement | null;
-    if (inputEl) {
-      inputEl.value = '';
-    }
-  };
-
   const handleSubmit = useCallback(
     async (e: React.FormEvent): Promise<void> => {
       e.preventDefault();
@@ -163,8 +106,6 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
         identifier: identifier.trim(),
         pincode: p.length > 0 ? p : null,
         description: description.trim() || null,
-        evidence_base64: evidenceBase64,
-        evidence_filename: evidenceFilename,
       };
       setBusy(true);
       try {
@@ -187,7 +128,7 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
         setBusy(false);
       }
     },
-    [channel, identifier, pincode, selectedScamType, description, evidenceBase64, evidenceFilename, lang]
+    [channel, identifier, pincode, selectedScamType, description, lang]
   );
 
   if (submitted) {
@@ -211,7 +152,6 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
             setIdentifier('');
             setPincode('');
             setDescription('');
-            handleRemoveImage();
             setError(null);
           }}
           className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
@@ -325,57 +265,7 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
         />
       </div>
 
-      {/* 5. Attach Evidence Image (Feature 2 & 3) */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <label className="mb-2 block text-sm font-semibold text-slate-900">
-          Attach Evidence Image <span className="text-xs font-normal text-slate-500">(Optional, JPG/PNG/WEBP, max 5 MB)</span>
-        </label>
-
-        {evidencePreviewUrl ? (
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <img
-                src={evidencePreviewUrl}
-                alt="Evidence preview"
-                className="h-14 w-14 rounded object-cover border border-slate-300"
-              />
-              <div className="truncate">
-                <p className="truncate text-xs font-bold text-slate-800">{evidenceFilename}</p>
-                <p className="text-[11px] text-slate-500">
-                  {evidenceFileSize ? `${(evidenceFileSize / 1024).toFixed(1)} KB` : ''}
-                </p>
-                <p className="text-[10px] text-emerald-600 font-medium">Ready for secure cryptographic hashing</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleRemoveImage}
-              className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50"
-            >
-              Remove image
-            </button>
-          </div>
-        ) : (
-          <div>
-            <input
-              type="file"
-              id="report-evidence-file"
-              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-              onChange={handleFileChange}
-              className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-800 file:cursor-pointer cursor-pointer"
-            />
-            {evidenceError ? (
-              <p className="mt-1.5 text-xs font-medium text-rose-600">{evidenceError}</p>
-            ) : (
-              <p className="mt-1.5 text-xs text-slate-400">
-                Screenshots of messages, call logs, QR codes, or payment receipts.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 6. Pincode Input */}
+      {/* 5. Pincode Input */}
       <div className="flex items-center gap-2">
         <input
           id="report-pincode"
