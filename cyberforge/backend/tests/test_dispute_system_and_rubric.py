@@ -306,3 +306,4 @@ def test_false_reports_never_trigger_alerts():
     alerts_resp = get_alerts(pincode=pin)
     spike_alerts = [a for a in alerts_resp.alerts if a.type == "SPIKE" and a.pincode == pin]
     assert len(spike_alerts) == 0, "Spam from 1 single reporter must NOT trigger a SPIKE alert"
+

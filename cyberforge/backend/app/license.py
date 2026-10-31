@@ -93,10 +93,29 @@ def upload_license(payload: LicensePayload):
     signature = payload.signature
 
     if payload.license_key and not (licensee and expires_at and signature):
-        parts = payload.license_key.split(":")
-        if len(parts) == 3:
-            licensee, expires_at, signature = parts
-        else:
+        raw_key = payload.license_key.strip()
+        if raw_key.startswith("{") and raw_key.endswith("}"):
+            try:
+                import json
+                parsed = json.loads(raw_key)
+                licensee = parsed.get("licensee")
+                expires_at = parsed.get("expires_at")
+                signature = parsed.get("signature")
+            except Exception:
+                pass
+
+        if not (licensee and expires_at and signature):
+            last_colon = raw_key.rfind(":")
+            if last_colon != -1:
+                sig_cand = raw_key[last_colon + 1:].strip()
+                rest = raw_key[:last_colon]
+                first_colon = rest.find(":")
+                if first_colon != -1:
+                    licensee = rest[:first_colon].strip()
+                    expires_at = rest[first_colon + 1:].strip()
+                    signature = sig_cand
+
+        if not (licensee and expires_at and signature):
             licensee = "Licensed User"
             expires_at = (datetime.now(timezone.utc) + timedelta(days=365)).isoformat()
             signature = generate_license_signature(licensee, expires_at)
