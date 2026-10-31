@@ -5,7 +5,6 @@ import {
   decideDispute,
   getDisputeAuditLog,
   getLicenseStatus,
-  compareHashes,
 } from '../services/api';
 import type {
   AdminDisputeItem,
@@ -13,11 +12,10 @@ import type {
   DisputeAuditLogItem,
   LicenseResponse,
   UserPOV,
-  HashComparisonResponse,
 } from '../types/api';
 
 export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<'disputes' | 'audit' | 'reports' | 'license' | 'hash-compare'>('disputes');
+  const [activeTab, setActiveTab] = useState<'disputes' | 'audit' | 'reports' | 'license'>('disputes');
 
   // Data states
   const [disputes, setDisputes] = useState<AdminDisputeItem[]>([]);
@@ -42,13 +40,6 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
   const [descExpanded, setDescExpanded] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-
-  // Hash comparison tool state
-  const [hashInputA, setHashInputA] = useState('');
-  const [hashInputB, setHashInputB] = useState('');
-  const [hashComparisonResult, setHashComparisonResult] = useState<HashComparisonResponse | null>(null);
-  const [hashCompareBusy, setHashCompareBusy] = useState(false);
-  const [hashCompareError, setHashCompareError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -119,33 +110,6 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
       setCopiedHash(true);
       setTimeout(() => setCopiedHash(false), 2000);
     });
-  };
-
-  const handleCompareHashesSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!hashInputA.trim() || !hashInputB.trim()) {
-      setHashCompareError('Please enter both SHA-256 hashes.');
-      return;
-    }
-    setHashCompareBusy(true);
-    setHashCompareError(null);
-    setHashComparisonResult(null);
-    try {
-      const res = await compareHashes(hashInputA.trim(), hashInputB.trim());
-      setHashComparisonResult(res);
-    } catch (err: any) {
-      setHashCompareError(err.detail || err.message || 'Failed to compare hashes');
-    } finally {
-      setHashCompareBusy(false);
-    }
-  };
-
-  const startHashComparisonWith = (hash: string) => {
-    setHashInputA(hash);
-    setHashInputB('');
-    setHashComparisonResult(null);
-    setReportModalOpen(false);
-    setActiveTab('hash-compare');
   };
 
   return (
@@ -222,18 +186,6 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
             {reports.length}
           </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('hash-compare')}
-          className={`flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-xs font-bold transition cursor-pointer ${
-            activeTab === 'hash-compare'
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <span>⚡ Hash Comparison Tool</span>
         </button>
 
         <button
@@ -496,87 +448,7 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
               </div>
             )}
 
-            {/* TAB 4: Hash Comparison Tool */}
-            {activeTab === 'hash-compare' && (
-              <div className="space-y-5 max-w-2xl">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-800">Cryptographic Hash Comparison Tool</h2>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Compare two evidence SHA-256 digests to verify bit-exact cryptographic identity.
-                  </p>
-                </div>
-
-                <form onSubmit={handleCompareHashesSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="hash-input-a" className="block text-xs font-bold text-slate-700 mb-1">
-                      Evidence Hash A (SHA-256)
-                    </label>
-                    <input
-                      id="hash-input-a"
-                      type="text"
-                      spellCheck={false}
-                      value={hashInputA}
-                      onChange={(e) => setHashInputA(e.target.value)}
-                      placeholder="e.g. e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                      className="w-full font-mono text-xs rounded-lg border border-slate-300 p-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="hash-input-b" className="block text-xs font-bold text-slate-700 mb-1">
-                      Comparison Hash B (SHA-256)
-                    </label>
-                    <input
-                      id="hash-input-b"
-                      type="text"
-                      spellCheck={false}
-                      value={hashInputB}
-                      onChange={(e) => setHashInputB(e.target.value)}
-                      placeholder="e.g. 5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"
-                      className="w-full font-mono text-xs rounded-lg border border-slate-300 p-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
-                    />
-                  </div>
-
-                  {hashCompareError ? (
-                    <div className="rounded-lg bg-rose-50 p-3 text-xs font-medium text-rose-700">
-                      {hashCompareError}
-                    </div>
-                  ) : null}
-
-                  <button
-                    type="submit"
-                    disabled={hashCompareBusy}
-                    className="rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
-                  >
-                    {hashCompareBusy ? 'Verifying Hashes...' : 'Compare SHA-256 Hashes'}
-                  </button>
-                </form>
-
-                {hashComparisonResult && (
-                  <div
-                    className={`rounded-xl border p-4 text-xs space-y-2 ${
-                      hashComparisonResult.match
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
-                        : 'border-amber-300 bg-amber-50 text-amber-950'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{hashComparisonResult.match ? '✅' : '⚠️'}</span>
-                      <h3 className="font-bold text-sm">{hashComparisonResult.summary}</h3>
-                    </div>
-                    {hashComparisonResult.explanation ? (
-                      <p className="mt-1 leading-relaxed opacity-90">{hashComparisonResult.explanation}</p>
-                    ) : null}
-                    <div className="pt-2 font-mono text-[11px] opacity-80 space-y-1">
-                      <div><b>Hash A:</b> {hashComparisonResult.hash_a}</div>
-                      <div><b>Hash B:</b> {hashComparisonResult.hash_b}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB 5: License */}
+            {/* License Tab */}
             {activeTab === 'license' && (
               <div className="space-y-4">
                 <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
@@ -820,13 +692,6 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                           className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-200 hover:bg-slate-700 cursor-pointer"
                         >
                           {copiedHash ? '✓ Copied!' : '📋 Copy Hash'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => startHashComparisonWith(selectedReport.evidence_metadata?.file_sha256 || '')}
-                          className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-blue-500 cursor-pointer"
-                        >
-                          ⚡ Compare in Tool
                         </button>
                       </div>
                     </div>

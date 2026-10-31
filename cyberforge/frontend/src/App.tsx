@@ -24,7 +24,7 @@ export default function App(): React.JSX.Element {
   }, [lang, setLang]);
 
   return (
-    <HashRouter>
+    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <LayoutWithRoutes
         lang={lang}
         onToggleLang={toggleLang}

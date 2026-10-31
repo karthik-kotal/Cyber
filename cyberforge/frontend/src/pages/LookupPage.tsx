@@ -13,17 +13,28 @@ export function LookupPage({ lang }: { lang: Lang }): React.JSX.Element {
   const navigate = useNavigate();
   const currentPov = localStorage.getItem('cyberforge_pov') || 'normal';
   const [identifier, setIdentifier] = useState('');
-  const { data, loading, error, refresh } = useApiData<LookupResponse>(
+  const [submittedQuery, setSubmittedQuery] = useState('');
+
+  const { data, loading, error, refresh } = useApiData<LookupResponse | null>(
     useCallback(
-      (signal: AbortSignal): Promise<LookupResponse> => lookup(identifier, { signal }),
-      [identifier],
+      async (signal: AbortSignal): Promise<LookupResponse | null> => {
+        if (!submittedQuery.trim()) return null;
+        return lookup(submittedQuery.trim(), { signal });
+      },
+      [submittedQuery],
     ),
-    [identifier],
+    [submittedQuery],
   );
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    refresh();
+    const q = identifier.trim();
+    if (!q) return;
+    if (q === submittedQuery) {
+      refresh();
+    } else {
+      setSubmittedQuery(q);
+    }
   };
 
   return (
@@ -49,14 +60,14 @@ export function LookupPage({ lang }: { lang: Lang }): React.JSX.Element {
           <button
             type="submit"
             disabled={loading || !identifier.trim()}
-            className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
+            className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 cursor-pointer"
           >
             {get(lang, 'lookupButton')}
           </button>
         </div>
       </div>
 
-      {loading ? (
+      {loading && submittedQuery ? (
         <Loading label={get(lang, 'loading')} />
       ) : error ? (
         <ErrorState error={error} onRetry={refresh} retryLabel={get(lang, 'tryAgain')} />

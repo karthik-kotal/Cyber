@@ -54,3 +54,4 @@ export const SCAM_CATEGORIES: ScamCategory[] = [
   { id: 'data-theft', name: 'Data Theft', description: 'Scam designed to collect personal, financial, or identity information' },
   { id: 'identity-theft', name: 'Identity Theft', description: 'Stolen personal information used to impersonate someone or open accounts' },
 ];
+
