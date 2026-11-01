@@ -1041,6 +1041,8 @@ Future improvements are not necessarily implemented in the current version.
 
 ## 👥 Team
 
+**Team Name:** Gandadagudi
+
 **Project:** CyberForge — Community Scam Map
 
 **Hackathon:** CyberForge Hackathon
