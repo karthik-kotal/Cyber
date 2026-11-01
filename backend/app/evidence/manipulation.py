@@ -6,7 +6,11 @@ import uuid
 import json
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple
-from PIL import Image, ExifTags
+try:
+    from PIL import Image, ExifTags
+except ImportError:
+    Image = None
+    ExifTags = None
 import numpy as np
 
 # Storage directory definitions (relative to workspace or configured)
