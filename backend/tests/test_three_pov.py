@@ -1,4 +1,4 @@
-﻿import json
+import json
 import pytest
 from datetime import datetime, timezone, timedelta
 from fastapi.testclient import TestClient

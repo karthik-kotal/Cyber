@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import datetime, timezone, timedelta
 import pytest
 from fastapi import HTTPException

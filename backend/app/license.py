@@ -1,4 +1,4 @@
-﻿import hmac
+import hmac
 import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
