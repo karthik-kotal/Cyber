@@ -95,14 +95,20 @@ export function apiBaseUrl(): string {
   if (
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.protocol === 'capacitor:' ||
+      window.location.hostname === '127.0.0.1')
+  ) {
+    return 'http://localhost:8000';
+  }
+
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'capacitor:' ||
       window.location.protocol === 'file:')
   ) {
     return DEFAULT_DEVICE_API_BASE_URL;
   }
 
-  return '';
+  return 'https://cyberforge-app.onrender.com';
 }
 
 // ---------------------------------------------------------------------------
