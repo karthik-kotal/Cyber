@@ -104,12 +104,14 @@ def lookup_identifier(
         verified_biz = cur.fetchone()
 
         # Check challenge status
+        clean_raw_no_spaces = raw_val.replace(" ", "")
         cur.execute(
             """
             SELECT COUNT(*) FROM challenges
-            WHERE identifier = ? AND status IN ('ACTIVE', 'under_review', 'UNDER_REVIEW')
+            WHERE (identifier = ? OR identifier = ? OR identifier = ?)
+              AND status IN ('ACTIVE', 'under_review', 'UNDER_REVIEW')
             """,
-            (normalized_id,)
+            (normalized_id, raw_val, clean_raw_no_spaces)
         )
         active_ch_count = cur.fetchone()[0]
 

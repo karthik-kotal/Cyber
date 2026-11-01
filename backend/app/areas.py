@@ -52,6 +52,8 @@ EXTENDED_AREAS: Dict[str, Dict[str, Any]] = {
     "560047": {"pincode": "560047", "locality": "Austin Town", "city": "Bengaluru", "lat": 12.9575, "lng": 77.6186},
     "560050": {"pincode": "560050", "locality": "Basavanagudi", "city": "Bengaluru", "lat": 12.9416, "lng": 77.5753},
     "560068": {"pincode": "560068", "locality": "Madivala / Bommanahalli", "city": "Bengaluru", "lat": 12.9160, "lng": 77.6230},
+    "560069": {"pincode": "560069", "locality": "Jayanagar 9th Block", "city": "Bengaluru", "lat": 12.9200, "lng": 77.5950},
+    "560041": {"pincode": "560041", "locality": "Jayanagar 4th Block", "city": "Bengaluru", "lat": 12.9279, "lng": 77.5873},
     "575001": {"pincode": "575001", "locality": "Mangaluru HO", "city": "Mangaluru", "lat": 12.9141, "lng": 74.8560},
     "580020": {"pincode": "580020", "locality": "Hubballi HO", "city": "Hubballi", "lat": 15.3647, "lng": 75.1240},
     "583101": {"pincode": "583101", "locality": "Ballari HO", "city": "Ballari", "lat": 15.1394, "lng": 76.9214},

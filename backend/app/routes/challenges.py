@@ -1,3 +1,4 @@
+from app.normalize import normalize_identifier
 import re
 import uuid
 from datetime import datetime, timezone
@@ -65,11 +66,115 @@ def _validate_reference_id_format(ref_id: str) -> None:
 def create_challenge(payload: ChallengeCreate):
     """
     POST /api/disputes or POST /api/challenges
-    Disputes a specific individual report identified by its exact Reference ID (report_id).
-    Disputes apply to individual reports, not the entire phone number or case.
-    Rejects phone numbers, bank accounts, UPI IDs, URLs, and arbitrary identifiers.
+    Supports both:
+    1. Bonus PRD endpoint: {identifier_type, identifier_value, claimant_name, contact_email, proof_note}
+       Creates challenge for the identifier and marks status under_review.
+    2. Report dispute endpoint: {reference_id or report_id, proof_note, ...}
+       Disputes a specific individual report identified by Reference ID.
     """
-    raw_ref = payload.reference_id or payload.report_id or payload.identifier or payload.identifier_value
+    raw_ident_val = payload.identifier_value
+    if raw_ident_val and str(raw_ident_val).strip():
+        # 1. Identifier-based challenge from Hackathon Brief (Image 4, Item 7)
+        try:
+            norm = normalize_identifier(str(raw_ident_val).strip(), payload.identifier_type)
+            target_identifier = norm.normalized_value
+            target_id_type = norm.identifier_type
+        except Exception:
+            target_identifier = str(raw_ident_val).strip()
+            target_id_type = payload.identifier_type or "phone"
+
+        reason = payload.proof_note or payload.reason or "Challenge filed by business claimant"
+        claimant = payload.claimant_name or payload.challenger_name or "Anonymous Claimant"
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM reports WHERE identifier = ? LIMIT 1", (target_identifier,))
+            rep_row = cur.fetchone()
+            target_report_id = rep_row[0] if rep_row else None
+
+            # Check if active challenge exists
+            clean_spaces = str(raw_ident_val).strip().replace(" ", "")
+            cur.execute(
+                """
+                SELECT id, status FROM challenges
+                WHERE (identifier = ? OR identifier = ? OR identifier = ?)
+                  AND status IN ('under_review', 'ACTIVE')
+                """,
+                (target_identifier, str(raw_ident_val).strip(), clean_spaces)
+            )
+            existing_ch = cur.fetchone()
+            if existing_ch:
+                challenge_id = existing_ch[0]
+                conn.execute(
+                    "UPDATE challenges SET proof_note = ?, updated_at = ? WHERE id = ?",
+                    (reason, now_iso, challenge_id)
+                )
+            else:
+                challenge_id = str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO challenges (
+                        id, report_id, identifier, identifier_type, claimant_name,
+                        contact_email, proof_note, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'under_review', ?)
+                    """,
+                    (
+                        challenge_id, target_report_id, target_identifier, target_id_type,
+                        claimant, payload.contact_email, reason, now_iso
+                    )
+                )
+
+            # Mark all reports for this identifier as disputed
+            conn.execute(
+                """
+                UPDATE reports SET
+                    is_disputed = 1,
+                    dispute_reason = ?,
+                    disputed_at = ?
+                WHERE identifier = ? OR identifier = ?
+                """,
+                (reason, now_iso, target_identifier, str(raw_ident_val).strip())
+            )
+
+            # Update or insert into cases with challenged = 1
+            cur.execute("SELECT identifier FROM cases WHERE identifier = ?", (target_identifier,))
+            if cur.fetchone():
+                conn.execute(
+                    """
+                    UPDATE cases SET
+                        challenged = 1,
+                        verdict = CASE WHEN verdict = 'KNOWN_SCAM' THEN 'SUSPICIOUS' ELSE verdict END,
+                        updated_at = ?
+                    WHERE identifier = ?
+                    """,
+                    (now_iso, target_identifier)
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO cases (
+                        identifier, identifier_type, first_seen, last_seen, verdict, challenged, report_count,
+                        distinct_reporters, updated_at
+                    ) VALUES (?, ?, ?, ?, 'NO_REPORTS', 1, 0, 0, ?)
+                    """,
+                    (target_identifier, target_id_type, now_iso, now_iso, now_iso)
+                )
+            conn.commit()
+
+        return ChallengeResponse(
+            challenge_id=challenge_id,
+            id=challenge_id,
+            reference_id=target_report_id or target_identifier,
+            report_id=target_report_id,
+            status=StatusString("under_review"),
+            identifier=target_identifier,
+            message=f"Challenge registered for {target_identifier}. Marked as under review.",
+            created_at=now_iso
+        )
+
+    # 2. Report ID based dispute
+    raw_ref = payload.reference_id or payload.report_id or payload.identifier
     if not raw_ref or not str(raw_ref).strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -94,7 +199,6 @@ def create_challenge(payload: ChallengeCreate):
         report_row = cur.fetchone()
 
         if not report_row:
-            # Check if ref_id matches ANY identifier in cases table to give an explicit informative error
             cur.execute("SELECT identifier FROM cases WHERE identifier = ?", (ref_id,))
             case_match = cur.fetchone()
             if case_match:
@@ -166,13 +270,11 @@ def create_challenge(payload: ChallengeCreate):
         )
         all_reports = [dict(r) for r in cur.fetchall()]
 
-        # Filter active undisputed reports for verdict escalation
         active_reports = [r for r in all_reports if not r.get("is_disputed")]
 
         cur.execute("SELECT COUNT(*) FROM verified_businesses WHERE identifier = ?", (target_identifier,))
         is_verified = cur.fetchone()[0] > 0
 
-        # Case is considered actively challenged if it has disputed reports
         has_disputed = len(all_reports) > len(active_reports)
         all_disputed = len(active_reports) == 0 and len(all_reports) > 0
 

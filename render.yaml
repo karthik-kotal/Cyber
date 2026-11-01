@@ -1,0 +1,29 @@
+# ==============================================================================
+# CyberForge — Render Blueprint Specification (render.yaml)
+# ==============================================================================
+# Deploys the CyberForge Backend Application as a native Python Web Service.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: cyberforge-app
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: CyberForgeAdmin2026!
+      - key: ADMIN_TOKEN
+        value: CyberForge@2026
+      - key: HMAC_SECRET
+        generateValue: true

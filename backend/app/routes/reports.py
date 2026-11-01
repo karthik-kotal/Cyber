@@ -372,7 +372,7 @@ def submit_report(payload: ReportCreate, request: Request):
             # Insert report into reports table (including description, evidence_id, category)
             conn.execute(
                 """
-                INSERT INTO reports (
+                INSERT OR REPLACE INTO reports (
                     id, identifier, identifier_type, channel, category, scam_type,
                     occurred_at, reported_at, reporter_id, reporter_hmac,
                     ip_prefix, ip_prefix_hmac, pincode, locality, city,

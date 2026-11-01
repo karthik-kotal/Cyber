@@ -9,11 +9,24 @@ scripts/setup_*.py
 **/local.properties
 *.apk
 
-# Python caches
+# Python caches & virtual environments
 __pycache__/
 *.py[cod]
 .pytest_cache/
+venv/
+backend/venv/
+.venv/
+
+# Database files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
 
 # Node
 node_modules/
 dist/
+cyberforge/frontend/dist/
+
+

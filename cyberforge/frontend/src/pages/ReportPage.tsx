@@ -118,6 +118,23 @@ export function ReportPage({ lang }: { lang: Lang }): React.JSX.Element {
           report_id: res.report_id || res.id || '',
           case_id: res.case_id || res.display_value || '',
         });
+
+        // Save to local device history for 'Only What We Reported' map view
+        try {
+          const raw = localStorage.getItem('cyberforge_my_reports');
+          const list = raw ? JSON.parse(raw) : [];
+          const newEntry = {
+            id: resolvedId,
+            identifier: identifier.trim(),
+            pincode: p || null,
+            channel,
+            scam_type: selectedScamType || channelToScamType[channel],
+            submitted_at: new Date().toISOString(),
+          };
+          localStorage.setItem('cyberforge_my_reports', JSON.stringify([newEntry, ...list.filter((x: any) => x.id !== resolvedId)].slice(0, 50)));
+        } catch {
+          // ignore
+        }
       } catch (err) {
         setError(
           err instanceof ApiError

@@ -3,9 +3,14 @@ import {
   getAdminDisputes,
   getAdminReports,
   decideDispute,
+  challengeReport,
   getDisputeAuditLog,
   getLicenseStatus,
 } from '../services/api';
+import {
+  getVerifiedBusinessDetails,
+  isVerifiedEntity,
+} from '../constants/verifiedBusinesses';
 import type {
   AdminDisputeItem,
   AdminReportItem,
@@ -33,6 +38,16 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
   const [decisionReason, setDecisionReason] = useState('');
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [decisionSuccessMsg, setDecisionSuccessMsg] = useState<string | null>(null);
+  const [disputeFilter, setDisputeFilter] = useState<'all' | 'pending' | 'resolved'>('all');
+
+  // File test dispute state
+  const [createDisputeModalOpen, setCreateDisputeModalOpen] = useState(false);
+  const [testDisputeReportId, setTestDisputeReportId] = useState('');
+  const [testDisputeClaimant, setTestDisputeClaimant] = useState('Subscriber Legal Appeal');
+  const [testDisputeReason, setTestDisputeReason] = useState('I am the legitimate holder of this line and disputing this defamatory report.');
+  const [createDisputeBusy, setCreateDisputeBusy] = useState(false);
+  const [createDisputeError, setCreateDisputeError] = useState<string | null>(null);
 
   // Report & Evidence inspection modal state
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -78,22 +93,61 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
     setModalOpen(true);
   };
 
+  const pendingDisputes = useMemo(
+    () => disputes.filter((d) => d.status === 'under_review' || d.status === 'ACTIVE' || d.status === 'pending'),
+    [disputes]
+  );
+  const resolvedDisputes = useMemo(
+    () => disputes.filter((d) => d.status.startsWith('resolved_') || d.status === 'REJECTED' || d.status === 'APPROVED'),
+    [disputes]
+  );
+  const displayedDisputes = useMemo(() => {
+    if (disputeFilter === 'pending') return pendingDisputes;
+    if (disputeFilter === 'resolved') return resolvedDisputes;
+    return disputes;
+  }, [disputeFilter, pendingDisputes, resolvedDisputes, disputes]);
+
   const handleDecisionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDispute) return;
     setDecisionBusy(true);
     setDecisionError(null);
     try {
-      await decideDispute(selectedDispute.id, {
+      const res = await decideDispute(selectedDispute.id, {
         action: decisionAction,
         reason: decisionReason,
       });
       setModalOpen(false);
+      setDecisionSuccessMsg(
+        `Dispute for ${selectedDispute.identifier} was successfully ${decisionAction === 'APPROVE' ? 'APPROVED (Upheld)' : 'REJECTED (Dismissed)'}. Target report status is now ${res.new_report_status} and case trust was recalculated.`
+      );
       await loadData();
     } catch (err: any) {
       setDecisionError(err.detail || err.message || 'Failed to record dispute decision');
     } finally {
       setDecisionBusy(false);
+    }
+  };
+
+  const handleCreateTestDispute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testDisputeReportId.trim()) return;
+    setCreateDisputeBusy(true);
+    setCreateDisputeError(null);
+    try {
+      await challengeReport(testDisputeReportId.trim(), {
+        claimant_name: testDisputeClaimant.trim() || 'Anonymous Claimant',
+        proof_note: testDisputeReason.trim() || 'Disputing inaccurate report',
+        contact_email: 'claimant@example.com',
+      });
+      setCreateDisputeModalOpen(false);
+      setDecisionSuccessMsg(`New dispute successfully registered for report ${testDisputeReportId.slice(0, 8)}. Ready for review.`);
+      setDisputeFilter('pending');
+      await loadData();
+    } catch (err: any) {
+      setCreateDisputeError(err.detail || err.message || 'Failed to file dispute');
+    } finally {
+      setCreateDisputeBusy(false);
     }
   };
 
@@ -113,7 +167,6 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
   };
 
   const entityInvestigations = useMemo(() => {
-    const verifiedNumbers = new Set(['+918041002233', '+91 80 4100 2233', '+918025530190', '+91 80 2553 0190', '1930', '1909']);
     const groups: Record<string, AdminReportItem[]> = {};
     for (const r of reports) {
       const key = r.identifier.trim();
@@ -123,8 +176,8 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
 
     return Object.entries(groups).map(([ident, repList]) => {
       const totalReports = repList.length;
-      const cleanIdent = ident.replace(/\s+/g, '');
-      const isVerified = verifiedNumbers.has(ident) || verifiedNumbers.has(cleanIdent);
+      const verifiedInfo = getVerifiedBusinessDetails(ident);
+      const isVerified = Boolean(verifiedInfo);
       const sortedByTime = [...repList].sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime());
       const firstSeen = sortedByTime[0]?.occurred_at || '—';
       const lastSeen = sortedByTime[sortedByTime.length - 1]?.occurred_at || '—';
@@ -156,21 +209,34 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
 
       const evidencePoints: string[] = [];
       if (isVerified) {
-        evidencePoints.push('Official Appendix C verified entity certification active.');
-        evidencePoints.push('Immune to crowdsourced defamatory flagging or extortion.');
-      }
-      if (repeatDescCount > 0) {
-        evidencePoints.push(`${repeatDescCount} reports share duplicate or copy-pasted scam description text.`);
-      }
-      if (dupImagesCount > 0) {
-        evidencePoints.push(`${dupImagesCount} reports present duplicate screenshot SHA-256 evidence.`);
-      }
-      if (burstDetected) {
-        evidencePoints.push(`Unusual burst rate: ${totalReports} reports submitted within ${Math.round(timeSpanSec)}s window.`);
+        evidencePoints.push(`Official Appendix C verified entity: ${verifiedInfo?.belongs_to} (${verifiedInfo?.category}).`);
+        evidencePoints.push('100% immune to crowdsourced defamatory flagging, review-bombing, or extortion.');
+        if (totalReports > 0) {
+          evidencePoints.push(`${totalReports} crowd report(s) targeting this verified entity — all safely quarantined without degrading trust standing.`);
+        }
+        if (repeatDescCount > 0) {
+          evidencePoints.push(`Coordinated reporting detected: ${repeatDescCount} reports share duplicate descriptions (attempted brigading quarantined).`);
+        }
+        if (burstDetected) {
+          evidencePoints.push(`Unusual submission burst: ${totalReports} reports within ${Math.round(timeSpanSec)}s window (quarantined).`);
+        }
+      } else {
+        if (repeatDescCount > 0) {
+          evidencePoints.push(`${repeatDescCount} reports share duplicate or copy-pasted scam description text.`);
+        }
+        if (dupImagesCount > 0) {
+          evidencePoints.push(`${dupImagesCount} reports present duplicate screenshot SHA-256 evidence.`);
+        }
+        if (burstDetected) {
+          evidencePoints.push(`Unusual burst rate: ${totalReports} reports submitted within ${Math.round(timeSpanSec)}s window.`);
+        }
       }
 
       let coordinationRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
-      if (repeatDescCount >= 3 || dupImagesCount >= 2 || burstDetected) {
+      if (isVerified) {
+        // Verified entities have ZERO fraud risk. Any crowd mass-reporting is an attempted defamatory sybil wave.
+        coordinationRisk = 'LOW';
+      } else if (repeatDescCount >= 3 || dupImagesCount >= 2 || burstDetected) {
         coordinationRisk = 'HIGH';
       } else if (repeatDescCount > 0 || dupImagesCount > 0 || totalReports >= 10) {
         coordinationRisk = 'MEDIUM';
@@ -178,7 +244,7 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
 
       let distinctReporters = totalReports;
       if (isVerified) {
-        distinctReporters = 0;
+        distinctReporters = 0; // Immune to community crowd count
       } else if (repeatDescCount > 0 || dupImagesCount > 0 || burstDetected) {
         distinctReporters = Math.max(1, Math.round(totalReports / (repeatDescCount + 2)));
       }
@@ -194,8 +260,10 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
 
       return {
         identifier: ident,
-        businessName: isVerified ? (ident.includes('4100') ? 'Fresh Bakes, Indiranagar (made up)' : 'Koramangala Pharmacy') : null,
-        category: repList[0]?.category || repList[0]?.identifier_type || 'PHONE',
+        isVerified,
+        verifiedInfo,
+        businessName: verifiedInfo ? verifiedInfo.belongs_to : null,
+        category: verifiedInfo ? verifiedInfo.category : (repList[0]?.category || repList[0]?.identifier_type || 'PHONE'),
         totalReports,
         distinctReporters,
         firstSeen,
@@ -206,9 +274,9 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
         burstDetected,
         coordinationRisk,
         verdict,
-        confidence: isVerified ? 'Certified High (Official Registry)' : distinctReporters >= 3 ? 'High (>3 independent clusters)' : 'Moderate (<3 independent clusters)',
+        confidence: isVerified ? 'Certified High (Official Appendix C Registry)' : distinctReporters >= 3 ? 'High (>3 independent clusters)' : 'Moderate (<3 independent clusters)',
         limitations: isVerified
-          ? 'Crowd report volume does not indicate business guilt. Preserves legitimate commerce from review bombings.'
+          ? 'Verified businesses are immune to crowdsourced scam status, protecting legitimate commerce against coordinated defamation.'
           : 'Shared networks or duplicate phrases indicate high coordination risk, but do not definitively prove common operator control. Human dispute appeal preserved.',
         evidencePoints,
         sampleReports: repList.slice(0, 5),
@@ -332,75 +400,201 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
             {/* TAB 1: Disputes */}
             {activeTab === 'disputes' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-slate-800">
-                    Pending Dispute Requests ({disputes.length})
-                  </h2>
-                  <span className="text-xs text-slate-500">
-                    Adjudicating disputes recalculates anti-sybil trust score and updates verdicts immediately.
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-800">
+                      Dispute Adjudication Console ({disputes.length})
+                    </h2>
+                    <span className="text-xs text-slate-500">
+                      Adjudicating disputes updates report status, recalculates trust score, and records an immutable audit log.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTestDisputeReportId(reports[0]?.id || '');
+                        setCreateDisputeModalOpen(true);
+                      }}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 cursor-pointer shadow-sm transition"
+                    >
+                      + File Test Dispute
+                    </button>
+                  </div>
                 </div>
 
-                {disputes.length === 0 ? (
+                {/* Filter Pills */}
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <span className="text-xs font-bold text-slate-500">Filter:</span>
+                  <button
+                    type="button"
+                    onClick={() => setDisputeFilter('all')}
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                      disputeFilter === 'all'
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All ({disputes.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDisputeFilter('pending')}
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                      disputeFilter === 'pending'
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                    }`}
+                  >
+                    Pending Review ({pendingDisputes.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDisputeFilter('resolved')}
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                      disputeFilter === 'resolved'
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Resolved ({resolvedDisputes.length})
+                  </button>
+                </div>
+
+                {/* Success feedback alert */}
+                {decisionSuccessMsg && (
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-300 p-3.5 text-xs text-emerald-950 flex items-start justify-between gap-2 shadow-sm">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base text-emerald-700 font-bold">✓</span>
+                      <span className="leading-relaxed font-medium">{decisionSuccessMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDecisionSuccessMsg(null)}
+                      className="text-emerald-700 hover:text-emerald-950 font-bold text-sm cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {displayedDisputes.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
-                    No active dispute requests pending administrator review.
+                    No disputes match current filter &quot;{disputeFilter}&quot;.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {disputes.map((d) => (
-                      <div
-                        key={d.id}
-                        className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 transition hover:border-slate-300"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-slate-900">
-                                {d.identifier}
-                              </span>
-                              <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
-                                {d.identifier_type || 'Target'}
-                              </span>
-                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                                {d.status}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Claimant: <span className="font-semibold text-slate-800">{d.claimant_name || 'Anonymous'}</span>{' '}
-                              ({d.contact_email || 'No email provided'})
-                            </p>
-                            {d.report_id ? (
-                              <p className="mt-0.5 font-mono text-[11px] text-slate-500">
-                                Disputed Report ID: {d.report_id}
+                    {displayedDisputes.map((d) => {
+                      const isPending = d.status === 'under_review' || d.status === 'ACTIVE' || d.status === 'pending';
+                      const isApproved = d.status === 'resolved_approved' || d.status === 'APPROVED';
+                      // isRejected d.status === 'resolved_rejected' || d.status === 'REJECTED';
+                      const verified = isVerifiedEntity(d.identifier);
+
+                      return (
+                        <div
+                          key={d.id}
+                          className={`rounded-xl border p-4 transition ${
+                            isPending
+                              ? 'border-amber-300 bg-amber-50/40 shadow-xs'
+                              : isApproved
+                              ? 'border-emerald-200 bg-emerald-50/20'
+                              : 'border-slate-200 bg-slate-50/60'
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                            <div className="space-y-1 min-w-[260px] flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-slate-900 break-words [overflow-wrap:anywhere]">
+                                  {d.identifier}
+                                </span>
+                                {verified && (
+                                  <span className="rounded bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 whitespace-nowrap">
+                                    🏢 Verified Entity
+                                  </span>
+                                )}
+                                <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 whitespace-nowrap">
+                                  {d.identifier_type || 'Target'}
+                                </span>
+                                {isPending ? (
+                                  <span className="rounded bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                                    ⏳ Action Required (Under Review)
+                                  </span>
+                                ) : isApproved ? (
+                                  <span className="rounded bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                                    ✓ Upheld & Approved
+                                  </span>
+                                ) : (
+                                  <span className="rounded bg-rose-100 border border-rose-300 px-2 py-0.5 text-[10px] font-bold text-rose-900">
+                                    ✕ Dismissed & Rejected
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-600">
+                                Claimant: <span className="font-semibold text-slate-800">{d.claimant_name || 'Anonymous'}</span>{' '}
+                                ({d.contact_email || 'No email provided'})
                               </p>
-                            ) : null}
+                              {d.report_id ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-[11px] text-slate-500">
+                                    Disputed Report ID: {d.report_id}
+                                  </span>
+                                  {reports.some((r) => r.id === d.report_id) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const rep = reports.find((r) => r.id === d.report_id);
+                                        if (rep) openReportModal(rep);
+                                      }}
+                                      className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                                    >
+                                      Inspect Report
+                                    </button>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isPending ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openDecisionModal(d, 'APPROVE')}
+                                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer shadow-sm transition"
+                                  >
+                                    ✓ Approve Dispute
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openDecisionModal(d, 'REJECT')}
+                                    className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer shadow-sm transition"
+                                  >
+                                    ✕ Reject Dispute
+                                  </button>
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-semibold text-slate-500">Adjudicated</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openDecisionModal(d, isApproved ? 'REJECT' : 'APPROVE')}
+                                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer transition shadow-2xs"
+                                  >
+                                    Re-adjudicate
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openDecisionModal(d, 'APPROVE')}
-                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer shadow-sm"
-                            >
-                              ✓ Approve Dispute
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openDecisionModal(d, 'REJECT')}
-                              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer shadow-sm"
-                            >
-                              ✕ Reject Dispute
-                            </button>
-                          </div>
+                          {d.proof_note ? (
+                            <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-700">
+                              <span className="font-semibold text-slate-900">Claimant Statement:</span> {d.proof_note}
+                            </div>
+                          ) : null}
                         </div>
-
-                        {d.proof_note ? (
-                          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-700">
-                            <span className="font-semibold text-slate-900">Claimant Statement:</span> {d.proof_note}
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -502,64 +696,90 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {reports.map((r) => (
-                          <tr
-                            key={r.id}
-                            className="hover:bg-slate-50/80 cursor-pointer"
-                            onClick={() => openReportModal(r)}
-                          >
-                            <td className="py-2.5 px-3 font-mono text-[11px] font-bold text-slate-800">
-                              {r.id.slice(0, 8)}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
-                              {r.identifier}
-                            </td>
-                            <td className="py-2.5 px-3 text-[11px] font-medium text-slate-600">
-                              {r.category || r.identifier_type}
-                            </td>
-                            <td className="py-2.5 px-3 text-[11px] font-medium text-slate-800">
-                              {r.scam_type}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.has_screenshot || r.evidence_metadata ? (
-                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
-                                  📷 Image
+                        {reports.map((r) => {
+                          const verified = isVerifiedEntity(r.identifier);
+                          return (
+                            <tr
+                              key={r.id}
+                              className="hover:bg-slate-50/80 cursor-pointer"
+                              onClick={() => openReportModal(r)}
+                            >
+                              <td className="py-2.5 px-3 font-mono text-[11px] font-bold text-slate-800">
+                                {r.id.slice(0, 8)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="break-all">{r.identifier}</span>
+                                  {verified && (
+                                    <span className="rounded bg-emerald-100 border border-emerald-300 px-1 py-0.2 text-[9px] font-bold text-emerald-800">
+                                      🏢 Verified
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-[11px] font-medium text-slate-600">
+                                {r.category || r.identifier_type}
+                              </td>
+                              <td className="py-2.5 px-3 text-[11px] font-medium text-slate-800">
+                                {r.scam_type}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {r.has_screenshot || r.evidence_metadata ? (
+                                  <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                                    📷 Image
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 text-[10px]">—</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                                ₹{r.amount_lost_inr?.toLocaleString() ?? 0}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                                {r.pincode || '—'}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                    r.status === 'ACCEPTED'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : r.status === 'RESOLVED_DISPUTED'
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                      : 'bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {r.status}
                                 </span>
-                              ) : (
-                                <span className="text-slate-400 text-[10px]">—</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
-                              ₹{r.amount_lost_inr?.toLocaleString() ?? 0}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
-                              {r.pincode || '—'}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <span
-                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                                  r.status === 'ACCEPTED'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-slate-200 text-slate-700'
-                                }`}
-                              >
-                                {r.status}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openReportModal(r);
-                                }}
-                                className="rounded bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-slate-800 cursor-pointer"
-                              >
-                                Inspect
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openReportModal(r);
+                                    }}
+                                    className="rounded bg-slate-900 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-slate-800 cursor-pointer"
+                                  >
+                                    Inspect
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTestDisputeReportId(r.id);
+                                      setCreateDisputeModalOpen(true);
+                                    }}
+                                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                                    title="File dispute for this report"
+                                  >
+                                    ⚖️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -595,21 +815,23 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                     {entityInvestigations.map((entity) => (
                       <div
                         key={entity.identifier}
-                        className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4 transition hover:border-slate-300"
+                        className={`rounded-xl border bg-white p-5 shadow-sm space-y-4 transition ${
+                          entity.isVerified ? 'border-emerald-200' : 'border-slate-200 hover:border-slate-300'
+                        }`}
                       >
                         {/* Entity Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
-                          <div className="space-y-1">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div className="space-y-1 min-w-[260px] flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-sm font-bold text-slate-900">
+                              <span className="font-mono text-sm font-bold text-slate-900 break-words [overflow-wrap:anywhere]">
                                 {entity.identifier}
                               </span>
                               {entity.businessName && (
-                                <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
+                                <span className="rounded bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-xs font-bold text-emerald-800 whitespace-nowrap">
                                   🏢 {entity.businessName}
                                 </span>
                               )}
-                              <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                              <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 whitespace-nowrap">
                                 {entity.category}
                               </span>
                             </div>
@@ -618,10 +840,10 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
                             <span
                               className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                                entity.verdict === 'VERIFIED_BUSINESS'
+                                entity.isVerified || entity.verdict === 'VERIFIED_BUSINESS'
                                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                   : entity.verdict === 'KNOWN_SCAM'
                                   ? 'bg-rose-100 text-rose-800 border border-rose-300'
@@ -630,19 +852,45 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                             >
                               Verdict: {entity.verdict}
                             </span>
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                                entity.coordinationRisk === 'HIGH'
-                                  ? 'bg-rose-600 text-white'
-                                  : entity.coordinationRisk === 'MEDIUM'
-                                  ? 'bg-amber-500 text-white'
-                                  : 'bg-slate-200 text-slate-700'
-                              }`}
-                            >
-                              Risk: {entity.coordinationRisk}
-                            </span>
+
+                            {entity.isVerified ? (
+                              <span className="rounded-full bg-blue-100 border border-blue-300 px-2.5 py-1 text-xs font-bold text-blue-900">
+                                Fraud Risk: ZERO (Protected Registry)
+                              </span>
+                            ) : (
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                                  entity.coordinationRisk === 'HIGH'
+                                    ? 'bg-rose-600 text-white'
+                                    : entity.coordinationRisk === 'MEDIUM'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                Risk: {entity.coordinationRisk}
+                              </span>
+                            )}
+
+                            {entity.isVerified && (entity.repeatDescCount > 0 || entity.burstDetected) && (
+                              <span className="rounded-full bg-purple-100 border border-purple-300 px-2.5 py-1 text-xs font-bold text-purple-900">
+                                🛡️ Defamatory Sybil Quarantined
+                              </span>
+                            )}
                           </div>
                         </div>
+
+                        {/* Verified Business Non-Repudiation Protection Card */}
+                        {entity.isVerified && (
+                          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3.5 space-y-1.5">
+                            <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
+                              <span className="text-base">🛡️</span>
+                              <span>Official Verified Business Protection Active (Appendix C Certified)</span>
+                            </div>
+                            <p className="text-xs text-emerald-800 leading-relaxed">
+                              <b>{entity.verifiedInfo?.belongs_to || entity.businessName}</b> is certified in the official anti-sybil registry. In accordance with trust-engine non-repudiation guarantees, crowdsourced reporting volume against certified businesses is automatically isolated and does not trigger scam flags, ensuring legitimate merchants and public helplines cannot be sabotaged by coordinated defamation waves or extortion.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Metric Grid */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
@@ -653,7 +901,9 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                           <div className="rounded-lg bg-indigo-50 p-2.5 border border-indigo-100">
                             <span className="text-[10px] font-semibold text-indigo-600 uppercase">Independent Sources</span>
                             <p className="text-base font-bold text-indigo-950 mt-0.5">{entity.distinctReporters}</p>
-                            <span className="text-[9px] text-indigo-500">(Post-Sybil Collapse)</span>
+                            <span className="text-[9px] text-indigo-500">
+                              {entity.isVerified ? '(Immune to mob reports)' : '(Post-Sybil Collapse)'}
+                            </span>
                           </div>
                           <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
                             <span className="text-[10px] font-semibold text-slate-500 uppercase">Duplicate Descriptions</span>
@@ -667,9 +917,27 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
 
                         {/* Evidence Findings */}
                         {entity.evidencePoints.length > 0 && (
-                          <div className="rounded-lg bg-amber-50/70 border border-amber-200 p-3 space-y-1">
-                            <h4 className="text-[11px] font-bold text-amber-900">Coordination & Sybil Indicators:</h4>
-                            <ul className="list-disc list-inside text-xs text-amber-800 space-y-0.5">
+                          <div
+                            className={`rounded-lg border p-3 space-y-1 ${
+                              entity.isVerified
+                                ? 'bg-blue-50/70 border-blue-200'
+                                : 'bg-amber-50/70 border-amber-200'
+                            }`}
+                          >
+                            <h4
+                              className={`text-[11px] font-bold ${
+                                entity.isVerified ? 'text-blue-900' : 'text-amber-900'
+                              }`}
+                            >
+                              {entity.isVerified
+                                ? '🛡️ Verified Entity Protection & Sybil Isolation Findings:'
+                                : '⚠️ Coordination & Sybil Indicators:'}
+                            </h4>
+                            <ul
+                              className={`list-disc list-inside text-xs space-y-0.5 ${
+                                entity.isVerified ? 'text-blue-800' : 'text-amber-800'
+                              }`}
+                            >
                               {entity.evidencePoints.map((point, idx) => (
                                 <li key={idx}>{point}</li>
                               ))}
@@ -726,8 +994,7 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                           </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    ))}</div>
                 )}
               </div>
             )}
@@ -795,7 +1062,7 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
             <form onSubmit={handleDecisionSubmit} className="mt-4 space-y-4 text-xs">
               <div>
                 <span className="text-slate-500">Target Identifier:</span>
-                <p className="font-mono font-bold text-slate-900 mt-0.5">{selectedDispute.identifier}</p>
+                <p className="font-mono font-bold text-slate-900 mt-0.5 break-all">{selectedDispute.identifier}</p>
               </div>
 
               <div>
@@ -861,6 +1128,27 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                 ✕
               </button>
             </div>
+
+            {/* Verified Business Protection Banner */}
+            {isVerifiedEntity(selectedReport.identifier) && (
+              <div className="rounded-xl bg-emerald-50 border border-emerald-300 p-3.5 flex items-start gap-2.5 text-xs text-emerald-950">
+                <span className="text-xl">🛡️</span>
+                <div className="space-y-0.5">
+                  <div className="font-bold flex items-center gap-2 flex-wrap">
+                    <span>Official Appendix C Verified Entity Protected:</span>
+                    <span className="rounded bg-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                      {getVerifiedBusinessDetails(selectedReport.identifier)?.belongs_to}
+                    </span>
+                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
+                      {getVerifiedBusinessDetails(selectedReport.identifier)?.category}
+                    </span>
+                  </div>
+                  <p className="text-emerald-800 leading-relaxed">
+                    This report targets an officially registered entity. Under anti-sybil non-repudiation rules, crowdsourced reports against verified organizations are quarantined and do not affect business trust score or create scam flags.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Quick Metadata Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -1151,6 +1439,103 @@ export function AdminDashboardPage({ pov }: { pov: UserPOV }): React.JSX.Element
                 Close Inspection
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Test Dispute Modal */}
+      {createDisputeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-bold text-slate-900">
+                File Dispute Appeal (Admin / Merchant POV)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setCreateDisputeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Submit a formal dispute challenge against an existing report. Once submitted, the dispute will appear in the Pending queue for administrator adjudication.
+            </p>
+
+            <form onSubmit={handleCreateTestDispute} className="space-y-3.5 text-xs">
+              <div>
+                <label htmlFor="test-dispute-report" className="block font-bold text-slate-800 mb-1">
+                  Target Report ID
+                </label>
+                <select
+                  id="test-dispute-report"
+                  value={testDisputeReportId}
+                  onChange={(e) => setTestDisputeReportId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 p-2.5 text-xs font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
+                  required
+                >
+                  <option value="">-- Select a report to dispute --</option>
+                  {reports.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.id.slice(0, 8)}... — {r.identifier} ({r.scam_type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="test-dispute-claimant" className="block font-bold text-slate-800 mb-1">
+                  Claimant Name / Organization
+                </label>
+                <input
+                  id="test-dispute-claimant"
+                  type="text"
+                  value={testDisputeClaimant}
+                  onChange={(e) => setTestDisputeClaimant(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
+                  placeholder="e.g. Registered Subscriber / Business Owner"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="test-dispute-reason" className="block font-bold text-slate-800 mb-1">
+                  Claimant Statement & Grounds for Appeal
+                </label>
+                <textarea
+                  id="test-dispute-reason"
+                  rows={3}
+                  value={testDisputeReason}
+                  onChange={(e) => setTestDisputeReason(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
+                  placeholder="Explain why this report is inaccurate, malicious, or defamatory..."
+                  required
+                />
+              </div>
+
+              {createDisputeError ? (
+                <div className="rounded bg-rose-50 p-2 text-rose-700 font-medium">{createDisputeError}</div>
+              ) : null}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCreateDisputeModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createDisputeBusy || !testDisputeReportId}
+                  className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-1.5 font-bold text-white cursor-pointer disabled:opacity-50"
+                >
+                  {createDisputeBusy ? 'Submitting...' : 'Submit Dispute'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
