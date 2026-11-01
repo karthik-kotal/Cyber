@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm --prefix cyberforge/frontend install && npm --prefix cyberforge/frontend run build",
+  "outputDirectory": "cyberforge/frontend/dist",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
