@@ -2,6 +2,8 @@
 
 ### Community-powered scam reporting, verification, and intelligence
 
+Live link : - https://cyber-gamma-brown.vercel.app/#/report
+
 CyberForge is a community-driven scam reporting and verification platform designed to help people identify suspicious phone numbers, UPI IDs, URLs, SMS senders, and other digital identifiers.
 
 The platform collects community reports, evaluates reporting patterns, applies trust and verification rules, and presents privacy-conscious scam intelligence through a simple web and Android interface.
