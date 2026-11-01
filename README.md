@@ -1,354 +1,1064 @@
-# CyberForge — Community Scam Map for India
+# 🛡️ CyberForge — Community Scam Map
 
-Report and verify scams in seconds, anonymously. Built for India's digital safety.
+### Community-powered scam reporting, verification, and intelligence
 
----
+CyberForge is a community-driven scam reporting and verification platform designed to help people identify suspicious phone numbers, UPI IDs, URLs, SMS senders, and other digital identifiers.
 
-## Table of Contents
-1. [What Community Scam Map Does](#1-what-community-scam-map-does)
-2. [How to Run the Frontend](#2-how-to-run-the-frontend)
-3. [How to Run the Backend](#3-how-to-run-the-backend)
-4. [How to Configure the Database](#4-how-to-configure-the-database)
-5. [How to Configure the Server](#5-how-to-configure-the-server)
-6. [How Reporting Works](#6-how-reporting-works)
-7. [How Lookup Works](#7-how-lookup-works)
-8. [How the Trust Rules Work](#8-how-the-trust-rules-work)
-9. [How Alerts Are Generated](#9-how-alerts-are-generated)
-10. [How Identifiers Are Masked](#10-how-identifiers-are-masked)
-11. [How Privacy Is Protected](#11-how-privacy-is-protected)
-12. [How the License System Works](#12-how-the-license-system-works)
-13. [How to Generate the Short License (5-Min Demo)](#13-how-to-generate-the-short-license-5-min-demo)
-14. [How to Generate the Long License](#14-how-to-generate-the-long-license)
-15. [How to Test the 4-Step License Demo (No Restart)](#15-how-to-test-the-4-step-license-demo-no-restart)
-16. [How to Deploy the Application (HTTPS)](#16-how-to-deploy-the-application-https)
-17. [Dispute System (Report Reference ID)](#17-dispute-system-report-reference-id)
-18. [Verified Businesses & Helplines](#18-verified-businesses--helplines)
-19. [Known Limitations](#19-known-limitations)
+The platform collects community reports, evaluates reporting patterns, applies trust and verification rules, and presents privacy-conscious scam intelligence through a simple web and Android interface.
+
+Instead of treating every report as proof of fraud, CyberForge evaluates the number of distinct reporters, report patterns, identifier history, verified-business records, and other available signals to produce a more responsible verdict.
+
+**Built for CyberForge Hackathon | Mitigata | Bengaluru**
 
 ---
 
-## 1. What Community Scam Map Does
+## 📌 Table of Contents
 
-CyberForge Community Scam Map is a mobile-first, privacy-preserving crowd-sourced defense system designed to protect citizens from cyber scams (digital arrest scams, investment fraud, utility bill impersonations, UPI phishing, fake customer support).
-
-It allows citizens to:
-- **Report scams anonymously in under 60 seconds** without login, phone number, or name.
-- **Check any phone number, bank account, UPI ID, or URL before paying** to get an instant trust verdict (`NO_REPORTS`, `SUSPICIOUS`, `KNOWN_SCAM`, or `VERIFIED_BUSINESS`).
-- **View geographic scam clusters** across India without exposing victim locations.
-- **Receive real-time scam alerts** (sudden spikes in an area or newly emerging scam patterns).
-- **Dispute individual false reports** using report Reference IDs without wiping evidence.
-- **Operate under cryptographic license control** that enforces organizational activation and instant renewal without server restarts.
+- [Overview](#-overview)
+- [Problem Statement](#-problem-statement)
+- [Our Solution](#-our-solution)
+- [Key Features](#-key-features)
+- [System Architecture](#-system-architecture)
+- [Technology Stack](#-technology-stack)
+- [How CyberForge Works](#-how-cyberforge-works)
+- [Trust and Verification Engine](#-trust-and-verification-engine)
+- [Privacy and Security](#-privacy-and-security)
+- [API Reference](#-api-reference)
+- [Project Structure](#-project-structure)
+- [Installation and Setup](#-installation-and-setup)
+- [Android Application](#-android-application)
+- [Testing](#-testing)
+- [Demonstration Workflow](#-demonstration-workflow)
+- [Limitations](#-limitations)
+- [Future Improvements](#-future-improvements)
+- [Team](#-team)
 
 ---
 
-## 2. How to Run the Frontend
+## 🌍 Overview
 
-The frontend is a lightweight, mobile-first React 18 + Vite + Tailwind CSS application supporting both English and Hindi.
+Online scams increasingly involve impersonation, fraudulent payment requests, fake customer-support numbers, suspicious links, and social engineering.
 
-```bash
-cd cyberforge/frontend
+People often discover that an identifier is suspicious only after they have interacted with it or transferred money.
 
-# Install dependencies (if not already installed)
-npm install
+CyberForge aims to make community scam intelligence accessible before users make potentially risky decisions.
 
-# Run the dev server on port 5173
-npm run dev -- --host 0.0.0.0 --port 5173
+### Our objective
 
-# Run unit tests (Vitest)
-npm test -- --run
+Build a platform that enables users to:
 
-# Run TypeScript type check
-npx tsc --noEmit
+1. Report suspicious identifiers.
+2. Check whether an identifier has previous community reports.
+3. Understand the platform's assessment.
+4. Explore scam activity by geographical area.
+5. View area-based alerts.
+6. Challenge incorrect classifications through a dispute workflow.
 
-# Production build
-npm run build
+### Project principles
+
+- Community-driven intelligence
+- Explainable verification rules
+- Privacy-conscious reporting
+- Responsible threat classification
+- Transparent investigation workflows
+- Accessible web and Android experiences
+
+---
+
+## 🚨 Problem Statement
+
+Existing scam-awareness approaches often suffer from several limitations:
+
+### 1. Lack of accessible community intelligence
+
+Users may have no convenient way to check whether a phone number, payment identifier, or suspicious link has been reported by others.
+
+### 2. False confidence from report counts
+
+A large number of reports does not automatically mean an identifier is fraudulent.
+
+Coordinated accounts, repeated submissions, and duplicate reports can artificially increase report counts.
+
+### 3. Limited geographical awareness
+
+Users may benefit from understanding scam activity reported in their local area rather than seeing only isolated identifiers.
+
+### 4. Incorrect classifications
+
+Legitimate businesses and service providers may be reported incorrectly.
+
+A responsible system needs a way to recognize verified businesses and allow disputes.
+
+### 5. Privacy concerns
+
+Scam reporting should not expose the identity, network information, or private notes of people submitting reports.
+
+---
+
+## 💡 Our Solution
+
+CyberForge provides a unified platform for community reporting, identifier lookup, trust evaluation, geographical scam intelligence, and business disputes.
+
+The application combines:
+
+- A React frontend for user interaction.
+- A FastAPI backend for API processing.
+- SQLite for persistent application data.
+- A trust engine for report evaluation.
+- Report similarity and clustering logic for coordinated activity.
+- Verified-business records for legitimate entities.
+- Map and alert endpoints for geographical intelligence.
+- Administrative workflows for investigations and disputes.
+
+The result is a system that evaluates community reports rather than blindly counting them.
+
+---
+
+## ✨ Key Features
+
+### 📢 Community Scam Reporting
+
+Users can submit suspicious identifiers with relevant report details.
+
+Supported identifier categories depend on the backend validation rules and include:
+
+- Phone numbers
+- UPI identifiers
+- URLs
+- SMS senders
+- Email addresses
+- Other supported identifier categories
+
+The backend validates and normalizes submitted identifiers before processing them.
+
+### 🔎 Identifier Lookup
+
+Users can check an identifier to understand its current assessment.
+
+The lookup response can include:
+
+- Verdict
+- Report count
+- Distinct reporter count
+- First and last reported timestamps
+- Masked identifier
+- Available evidence details
+- Challenge status
+
+### 🧠 Trust and Verification Engine
+
+CyberForge applies deterministic verification rules to evaluate community reports.
+
+The engine considers factors such as:
+
+- Distinct reporter count
+- Report history
+- Duplicate report patterns
+- Coordinated reporting signals
+- Verified-business records
+- Challenge and dispute state
+
+The final verdict is produced by the implemented trust rules.
+
+### 🕸️ Coordinated Reporting Detection
+
+The platform analyzes relationships between reports to identify potentially coordinated reporting activity.
+
+Available signals may include:
+
+- Reporter identity hashes
+- IP-prefix hashes
+- Note fingerprints
+- Transaction-reference fingerprints
+- File hashes, where applicable to the current implementation
+- Report timing and similarity
+
+Related reports can be grouped into clusters to reduce the influence of coordinated submissions.
+
+### 🗺️ Geographical Scam Map
+
+The map endpoint provides area-based scam intelligence.
+
+The backend filters reports according to its geographical and time-window rules, groups relevant reports, and returns map data.
+
+The map is designed to communicate geographical patterns without exposing precise reporter locations.
+
+### 🚨 Area-Based Alerts
+
+Users can retrieve alerts associated with a geographical area.
+
+Alerts provide an additional way to understand potentially relevant scam activity beyond checking one identifier.
+
+### 🏪 Verified Businesses
+
+CyberForge maintains verified-business records to reduce the risk of legitimate businesses being incorrectly classified.
+
+Verified-business checks take priority according to the implemented trust rules.
+
+### ⚖️ Business Disputes
+
+The dispute workflow allows an eligible business or administrator to challenge an incorrect classification.
+
+Administrative decisions can update the relevant challenge and report state while preserving an audit trail.
+
+### 🔐 Privacy-Conscious Results
+
+Public lookup responses are designed to avoid exposing reporter identities, raw IP addresses, or private report notes.
+
+Identifiers are masked according to the implemented privacy rules.
+
+---
+
+## 🏗️ System Architecture
+
+CyberForge follows a client-server architecture.
+
+The frontend communicates with the FastAPI backend through HTTP APIs.
+
+The backend validates requests, applies business and trust rules, accesses persistent storage, and returns structured responses.
+
+### Architecture Diagram
+
+```mermaid
+flowchart TB
+    subgraph CLIENT["Client Applications"]
+        WEB["React Web Application"]
+        ANDROID["Android Application"]
+    end
+
+    subgraph FRONTEND["Frontend Layer"]
+        UI["User Interface"]
+        REPORT["Report Interface"]
+        LOOKUP["Identifier Lookup"]
+        MAP["Scam Map"]
+        ALERTS["Area Alerts"]
+        DISPUTE["Dispute Interface"]
+    end
+
+    subgraph BACKEND["FastAPI Backend"]
+        API["REST API"]
+        VALIDATION["Input Validation"]
+        NORMALIZATION["Identifier Normalization"]
+        REPORT_SERVICE["Report Processing"]
+        LOOKUP_SERVICE["Lookup Service"]
+        TRUST["Trust and Verification Engine"]
+        CLUSTER["Report Similarity and Clustering"]
+        MAP_SERVICE["Map and Alert Services"]
+        ADMIN["Administrative Workflows"]
+    end
+
+    subgraph STORAGE["Persistence Layer"]
+        DB[("SQLite Database")]
+        REPORTS["Reports"]
+        CASES["Cases"]
+        BUSINESS["Verified Businesses"]
+        CHALLENGES["Challenges"]
+        EVIDENCE["Evidence Records"]
+        AUDIT["Dispute Audit Log"]
+    end
+
+    WEB --> UI
+    ANDROID --> UI
+
+    UI --> REPORT
+    UI --> LOOKUP
+    UI --> MAP
+    UI --> ALERTS
+    UI --> DISPUTE
+
+    REPORT --> API
+    LOOKUP --> API
+    MAP --> API
+    ALERTS --> API
+    DISPUTE --> API
+
+    API --> VALIDATION
+    VALIDATION --> NORMALIZATION
+
+    NORMALIZATION --> REPORT_SERVICE
+    NORMALIZATION --> LOOKUP_SERVICE
+
+    REPORT_SERVICE --> TRUST
+    REPORT_SERVICE --> CLUSTER
+    LOOKUP_SERVICE --> TRUST
+
+    TRUST --> DB
+    CLUSTER --> DB
+
+    MAP_SERVICE --> DB
+    ADMIN --> DB
+
+    DB --> REPORTS
+    DB --> CASES
+    DB --> BUSINESS
+    DB --> CHALLENGES
+    DB --> EVIDENCE
+    DB --> AUDIT
 ```
 
-The frontend will be accessible at: `http://localhost:5173`
+### Architecture Explanation
+
+| Layer | Responsibility |
+|---|---|
+| Client | Web and Android user experiences |
+| Frontend | Reporting, lookup, map, alerts, and dispute interfaces |
+| API | Receives and routes HTTP requests |
+| Validation | Checks submitted data and identifier formats |
+| Normalization | Converts supported identifiers into canonical forms |
+| Report processing | Stores and processes community reports |
+| Trust engine | Evaluates report history and verification rules |
+| Clustering | Identifies related or potentially coordinated reports |
+| Map and alerts | Provides area-based scam intelligence |
+| Database | Stores reports, cases, business records, and related information |
+| Admin workflows | Supports authorized investigation and dispute decisions |
 
 ---
 
-## 3. How to Run the Backend
+## 🔄 How CyberForge Works
 
-The backend is built with FastAPI and Python 3.11+.
+### Report Submission Flow
+
+```mermaid
+flowchart TD
+    A["User submits a scam report"] --> B["Frontend sends API request"]
+    B --> C["Backend validates request"]
+    C --> D{"Valid identifier?"}
+
+    D -- No --> E["Return validation error"]
+    D -- Yes --> F["Normalize identifier"]
+
+    F --> G["Process report"]
+    G --> H["Calculate fingerprints"]
+    H --> I["Analyze report relationships"]
+
+    I --> J["Store report"]
+    J --> K["Recalculate trust assessment"]
+
+    K --> L["Return report result"]
+    L --> M["Frontend displays response"]
+```
+
+### Identifier Lookup Flow
+
+```mermaid
+flowchart TD
+    A["User enters identifier"] --> B["Validate identifier"]
+    B --> C{"Valid format?"}
+
+    C -- No --> D["Return HTTP 400"]
+    C -- Yes --> E["Normalize identifier"]
+
+    E --> F["Query report history"]
+    F --> G["Check verified-business records"]
+
+    G --> H{"Verified business?"}
+    H -- Yes --> I["Return VERIFIED_BUSINESS"]
+
+    H -- No --> J{"Reports available?"}
+    J -- No --> K["Return NO_REPORTS"]
+
+    J -- Yes --> L["Evaluate trust rules"]
+    L --> M["Analyze distinct reporters"]
+    M --> N["Apply coordinated-report rules"]
+
+    N --> O["Determine verdict"]
+    O --> P["Mask identifier"]
+    P --> Q["Return lookup response"]
+```
+
+### Map Flow
+
+```mermaid
+flowchart TD
+    A["User opens scam map"] --> B["Request map endpoint"]
+    B --> C["Validate geographical parameters"]
+    C --> D["Resolve target area"]
+    D --> E["Retrieve eligible reports"]
+    E --> F["Apply time-window filters"]
+    F --> G["Group reports by area"]
+    G --> H["Apply geographical filters"]
+    H --> I["Build map response"]
+    I --> J["Display map data"]
+```
+
+### Dispute Flow
+
+```mermaid
+flowchart TD
+    A["Business submits dispute"] --> B["Validate dispute request"]
+    B --> C["Check authorization"]
+
+    C --> D{"Authorized?"}
+    D -- No --> E["Return unauthorized response"]
+
+    D -- Yes --> F["Create challenge"]
+    F --> G["Administrator reviews"]
+
+    G --> H{"Decision"}
+
+    H -- Approve --> I["Update report and case state"]
+    H -- Reject --> J["Update challenge state"]
+
+    I --> K["Recalculate trust assessment"]
+    J --> L["Preserve existing report state"]
+
+    K --> M["Write audit record"]
+    L --> M
+
+    M --> N["Return updated result"]
+```
+
+---
+
+## 🧠 Trust and Verification Engine
+
+The trust engine is a central component of CyberForge.
+
+Its purpose is to evaluate community reporting activity using deterministic rules.
+
+### Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| `NO_REPORTS` | No eligible community reports were found |
+| `SUSPICIOUS` | Available signals indicate suspicious activity, but the evidence is insufficient for a stronger classification |
+| `KNOWN_SCAM` | The identifier meets the implemented scam-classification rules |
+| `VERIFIED_BUSINESS` | The identifier matches an eligible verified-business record |
+
+### Distinct Reporter Evaluation
+
+CyberForge distinguishes between total reports and distinct reporters.
+
+For example:
+
+```text
+Total reports: 40
+Distinct reporters: 1
+```
+
+This should not be interpreted as 40 independent confirmations.
+
+The system evaluates reporting relationships and applies its trust rules before determining the final classification.
+
+### Coordinated Reporting
+
+The clustering component identifies relationships between reports using implemented similarity signals.
+
+```mermaid
+flowchart TD
+    A["Reports for same identifier"] --> B["Calculate similarity signals"]
+
+    B --> C["Reporter identity"]
+    B --> D["Network-prefix signal"]
+    B --> E["Note fingerprint"]
+    B --> F["Transaction-reference signal"]
+    B --> G["Report timing"]
+
+    C --> H["Evaluate relationships"]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I{"Similarity threshold met?"}
+
+    I -- No --> J["Keep reports independent"]
+    I -- Yes --> K["Create relationship edge"]
+
+    K --> L["Cluster related reports"]
+    L --> M["Evaluate distinct reporting activity"]
+    M --> N["Apply trust rules"]
+```
+
+### Important Design Principle
+
+A report is a community signal, not automatic proof of fraud.
+
+CyberForge aims to reduce the influence of duplicate and coordinated reports while preserving the ability to identify legitimate community reporting activity.
+
+The trust engine is rule-based. It should not be described as a machine-learning classifier.
+
+---
+
+## 🔐 Privacy and Security
+
+CyberForge is designed to limit unnecessary exposure of sensitive reporting information.
+
+### Privacy Measures
+
+- Identifier normalization before processing
+- Masked public identifier display
+- Reporter identity hashing
+- Network-prefix hashing where implemented
+- Fingerprinting for report relationship analysis
+- Restricted administrative endpoints
+- Protected dispute workflows
+- Public lookup responses that omit reporter identities
+- Area-based map information instead of precise reporter locations
+
+### Administrative Security
+
+Administrative operations require authorization through the configured administrative authentication mechanism.
+
+The exact authentication header and configuration must match the backend implementation.
+
+Never publish production administrative credentials in this repository.
+
+### Responsible Classification
+
+A classification should be treated as an assessment based on available information, not a guarantee that an identifier is fraudulent or safe.
+
+Users should independently verify important payment and identity information.
+
+---
+
+## 🛠️ Technology Stack
+
+| Component | Technology |
+|---|---|
+| Frontend | React |
+| Frontend tooling | Vite |
+| Backend | Python |
+| API framework | FastAPI |
+| API server | Uvicorn |
+| Database | SQLite |
+| Android integration | Capacitor |
+| Testing | Pytest |
+| Frontend testing | Vitest |
+| API documentation | OpenAPI / Swagger UI |
+
+### Why These Technologies?
+
+**React**
+
+Provides a component-based frontend for the reporting, lookup, map, and alert interfaces.
+
+**Vite**
+
+Supports frontend development and production builds.
+
+**FastAPI**
+
+Provides structured API routes, request validation, and automatic API documentation.
+
+**SQLite**
+
+Provides persistent relational storage with a lightweight local deployment model.
+
+**Capacitor**
+
+Packages the web frontend into an Android application.
+
+---
+
+## 📡 API Reference
+
+CyberForge exposes REST endpoints through its FastAPI backend.
+
+The exact endpoint paths and parameters should be verified against the current OpenAPI documentation.
+
+### Core API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health` | Check backend health |
+| POST | `/reports` | Submit a scam report |
+| GET | `/lookup` | Look up an identifier |
+| GET | `/map` | Retrieve area-based scam information |
+| GET | `/alerts` | Retrieve area-based alerts |
+| POST | `/admin/reset` | Reset demonstration data |
+| POST | `/challenges` | Submit a business dispute or challenge |
+
+Administrative and dispute endpoints may require authorization.
+
+### API Documentation
+
+When the backend is running, open:
+
+```text
+http://localhost:8000/docs
+```
+
+OpenAPI documentation provides the actual request schemas, parameters, response structures, and available routes.
+
+### Health Check
+
+Request:
+
+```http
+GET /health
+```
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "status": "healthy"
+}
+```
+
+### Identifier Lookup
+
+The lookup endpoint checks a supported identifier against available report and verification records.
+
+Example request structure:
+
+```http
+GET /lookup?type=phone&value=<URL_ENCODED_IDENTIFIER>
+```
+
+The actual parameter names should be confirmed from the current OpenAPI specification.
+
+Possible response fields include:
+
+```json
+{
+  "verdict": "NO_REPORTS",
+  "report_count": 0,
+  "distinct_reporters": 0,
+  "display_value": "<MASKED_IDENTIFIER>",
+  "evidence": [],
+  "challenged": false
+}
+```
+
+This is an illustrative response structure. Use the actual response generated by the running backend when documenting the final API.
+
+### Report Submission
+
+Request:
+
+```http
+POST /reports
+Content-Type: application/json
+```
+
+The request body must follow the schema exposed by the backend.
+
+The backend validates the identifier and report fields, processes the submission, stores the report, and returns the result.
+
+### Map
+
+Request:
+
+```http
+GET /map
+```
+
+The map endpoint returns eligible report information according to the implemented area, radius, and time-window rules.
+
+### Alerts
+
+Request:
+
+```http
+GET /alerts
+```
+
+The alert endpoint returns available alerts according to the configured geographical and reporting criteria.
+
+### Administrative Reset
+
+The administrative reset endpoint is intended for controlled demonstrations and testing.
+
+It must be protected by the configured administrative authorization.
+
+**Do not expose this endpoint publicly or use it against production data.**
+
+---
+
+## 📁 Project Structure
+
+The repository contains frontend and backend application components.
+
+```text
+CyberForge/
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   └── ...
+│   │
+│   ├── public/
+│   ├── package.json
+│   ├── vite.config.*
+│   └── capacitor.config.ts
+│
+├── backend/
+│   ├── app/
+│   │   ├── routes/
+│   │   ├── evidence/
+│   │   ├── ...
+│   │   └── main.py
+│   │
+│   ├── tests/
+│   ├── scripts/
+│   ├── data/
+│   ├── requirements.txt
+│   └── README.md
+│
+├── docs/
+│
+└── README.md
+```
+
+The directory names above describe the expected major components. Confirm the exact current repository tree before publishing this section.
+
+---
+
+## 🚀 Installation and Setup
+
+### Prerequisites
+
+Install the following:
+
+- Python 3.11 or a compatible version supported by the project
+- Node.js and npm
+- Git
+- Android Studio for Android development
+- Android SDK for native builds
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/karthik-kotal/Cyber.git
+```
+
+```bash
+cd Cyber
+```
+
+### 2. Backend Setup
+
+Navigate to the backend:
 
 ```bash
 cd backend
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run all 93 unit and integration tests
-pytest -v
-
-# Start the server on port 8000
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The API will be accessible at: `http://localhost:8000`  
-Interactive Swagger docs: `http://localhost:8000/docs`
-
----
-
-## 4. How to Configure the Database
-
-- The application uses **SQLite** with Write-Ahead Logging (`WAL` mode) for fast, zero-configuration atomic transactions.
-- By default, the database file is created at `data/scam_map.db`.
-- To specify a custom database location, set the `DATABASE_PATH` environment variable:
-  ```bash
-  # Windows PowerShell
-  $env:DATABASE_PATH = "E:\cyber\data\scam_map.db"
-
-  # Linux / macOS
-  export DATABASE_PATH="/path/to/custom_scam_map.db"
-  ```
-- The database auto-initializes tables and seeds verified businesses upon first startup.
-- To reset and seed the database for clean testing:
-  ```bash
-  curl -X POST http://localhost:8000/api/admin/reset
-  ```
-
----
-
-## 5. How to Configure the Server
-
-Configuration is managed via environment variables (or `.env` file):
-
-| Variable | Default Value | Description |
-| :--- | :--- | :--- |
-| `API_V1_PREFIX` | `/api` | Base path prefix for all endpoints |
-| `DATABASE_PATH` | `data/scam_map.db` | Path to SQLite database file |
-| `ADMIN_TOKEN` | `cyberforge-secret-token-2026` | Token for admin routes (`/api/admin/verified-businesses`) |
-| `KNOWN_SCAM_MIN_SOURCES` | `3` | Minimum independent clusters required for `KNOWN_SCAM` |
-| `SIMILARITY_COLLAPSE_THRESHOLD`| `0.70` | Composite score threshold to collapse coordinated reports |
-| `VITE_API_BASE_URL` | `http://localhost:8000` | Frontend backend URL (or empty for dev proxy) |
-
----
-
-## 6. How Reporting Works
-
-1. **Anonymous Submission:** Citizens select an identifier category (`PHONE`, `BANK_ACCOUNT`, `UPI`, `WHATSAPP`, `URL`, `EMAIL`, `SMS`, `OTHER`), enter the identifier, choose the scam type, enter an optional 6-digit PIN code, and add evidence (screenshots, transaction references, notes).
-2. **Instant Normalization:**
-   - Phone numbers: stripped of spaces and dashes, converted to E.164 standard (`+919876543210` and `09876543210` map to the same normalized entity).
-   - Bank accounts: preserved as account strings (e.g. `ACC:12345678901` or `IFSC:ACC`) and strictly separated from phone numbers.
-   - UPI IDs: converted to lowercase and validated for valid `@provider` handles.
-   - URLs: stripped of tracking query parameters (`utm_*`, `fbclid`), paths normalized.
-3. **Reference ID Generation:** Each accepted report receives a unique UUIDv4 `report_id` (Reference ID). This ID is returned in the API response and displayed to the reporter.
-
----
-
-## 7. How Lookup Works
-
-1. Enter any identifier to inspect (`GET /api/lookup?identifier=...`).
-2. The backend normalizes the input, locates all accepted reports, checks business registries, and evaluates trust rules.
-3. Verdicts:
-   - **`NO_REPORTS`**: 0 reports found. Friendly all-clear.
-   - **`SUSPICIOUS`**: 1 or 2 independent reporters, or coordinated single-cluster reports (e.g., 20 reports from same Wi-Fi), or report under active dispute.
-   - **`KNOWN_SCAM`**: 3 or more distinct, independent reporters from different subnets/networks with uncoordinated reports.
-   - **`VERIFIED_BUSINESS`**: Official helpline (e.g. `1930`, `1909`) or verified business (e.g., SBI, HDFC, Amazon India). Always overrides scam classification to prevent malicious vandalism.
-
----
-
-## 8. How the Trust Rules Work
-
-The trust engine uses an **explainable Union-Find disjoint-set clustering algorithm** (`trust_engine.py`) designed to defeat coordinated sybil attacks:
-
-### Sybil Defense & Collapsing Rules:
-- **Same Reporter:** Multiple reports from the same reporter HMAC always collapse into **1 cluster**. One person reporting 6 times only counts as **1 person** (`SUSPICIOUS`, never `KNOWN_SCAM`).
-- **Same Subnet / Wi-Fi:** 22 fake accounts reporting from the same `/24` IP prefix collapse into **1 cluster**. They will never escalate an entity to `KNOWN_SCAM`.
-- **Duplicate Notes:** Coordinated copy-paste notes collapse into **1 cluster**.
-- **Shared Evidence:** Matching image perceptual hashes (`pHash`), file SHA-256 hashes, or transaction reference IDs collapse reports into **1 cluster**.
-- **Disputed Reports:** If a report Reference ID is disputed, it is marked `is_disputed = 1`, and the identifier's verdict is strictly capped at `SUSPICIOUS` with `challenged: true`.
-
----
-
-## 9. How Alerts Are Generated
-
-The alert engine (`alert_engine.py`) monitors valid community reports:
-1. **`SPIKE` Alert:** Triggered when reports in a 6-digit pincode area jump dramatically in a 24-hour window compared to a 7-day baseline.
-   - **Anti-False Alert Guard:** Requires at least **2 distinct, independent reporters** (`COUNT(DISTINCT reporter_hmac) >= 2`). Repeated reports by one person or bot accounts on the same Wi-Fi **never** trigger a spike alert. Disputed reports and verified businesses are excluded.
-2. **`NEW_TYPE` Alert:** Triggered when a novel scam type is detected in an area that had zero occurrences in the preceding 7 days.
-
----
-
-## 10. How Identifiers Are Masked
-
-To balance public warning with individual privacy:
-- Identifiers with **fewer than 3 independent reporters** are masked in public lookup responses:
-  - Phone: `+919876543210` -> `98XXXXX210`
-  - Bank Account: `ACC:123456789012` -> `ACC:12XXXXXX9012`
-  - UPI ID: `scammer@okhdfcbank` -> `scXXXXXr@okhdfcbank`
-- Identifiers with **3 or more independent reporters** (`KNOWN_SCAM`) are unmasked (`+919876543210`) so users can identify the threat.
-- Verified businesses and official helplines are always displayed in full.
-
----
-
-## 11. How Privacy Is Protected
-
-CyberForge guarantees **automatic disqualification safety** as specified in the hackathon brief:
-1. **Zero Storage of Reporter Identities:** Reporter names, emails, and device IDs are never collected.
-2. **No Raw IPs in Public APIs:** IP addresses are salted, hashed with HMAC-SHA256 at the `/24` subnet level, and used solely for in-memory sybil clustering.
-3. **No Exact GPS Coordinates:** The map never stores or displays user GPS coordinates. All pins are aggregated to 6-digit postal area centroids.
-4. **Non-Accusatory Wording:** The result screen displays objective community data:
-   - ✅ *"Reported by 7 people near you"*
-   - 🚫 Never uses defamatory phrasing like *"This person is a fraud"*.
-5. **Mandatory Privacy Disclaimer:** Every lookup response includes:
-   > *"Reports are anonymous. Reporter identities and exact locations are not displayed."*
-
----
-
-## 12. How the License System Works
-
-- **Enforcement Point:** Backend middleware in `backend/app/main.py`.
-- **Cryptographic Verification:** HMAC-SHA256 signature generated over `{licensee}:{expires_at}` using the signing key in `backend/app/license.py`.
-- **Zero Restart Renewal:** New licenses are activated dynamically via `POST /api/license/activate` without restarting the server or dropping connections.
-- **Expiration Behavior:** When expired, all non-exempt API endpoints return **HTTP 403 `{"error": "LICENSE_EXPIRED"}`**, and the frontend displays the full-screen `"Licence expired"` screen with an instant renewal form.
-
----
-
-## 13. How to Generate the Short License (5-Min Demo)
-
-Run the license generator script:
+Create a virtual environment:
 
 ```bash
-# Generate short license expiring in 5 minutes
-python scripts/generate_license.py --type short --licensee "Demo Bank"
+python -m venv venv
 ```
 
-Output files created in `licenses/`:
-- `licenses/short_license.json`: JSON payload for API upload.
-- `licenses/short_license.key`: Single-string key (`licensee:expires_at:signature`) for copy-pasting into the frontend renewal form.
-
----
-
-## 14. How to Generate the Long License
+Activate it on Windows:
 
 ```bash
-# Generate long license valid for 365 days
-python scripts/generate_license.py --type long --licensee "Demo Bank"
+venv\Scripts\activate
 ```
 
-Output files created in `licenses/`:
-- `licenses/long_license.json`
-- `licenses/long_license.key`
+Install dependencies:
 
----
-
-## 15. How to Test the 4-Step License Demo (No Restart)
-
-The judging brief requires a 4-step license demo that works live with no server restart:
-
-### Step 1: Confirm Initial Active License
 ```bash
-curl http://localhost:8000/api/license/status
-# Expected: {"status": "ACTIVE", "active": true, ...}
+python -m pip install -r requirements.txt
 ```
 
-### Step 2: Activate Expired / 5-Minute License
+Start the backend:
+
 ```bash
-# Generate instant expired license (or use short_license.json after 5 min)
-python scripts/generate_license.py --type expired
-
-# Upload to server
-curl -X POST http://localhost:8000/api/license/activate \
-  -H "Content-Type: application/json" \
-  -d @licenses/already_expired_license.json
-
-# Check status:
-curl http://localhost:8000/api/license/status
-# Expected: {"status": "EXPIRED", "active": false}
-
-# Verify protected endpoints are blocked:
-curl http://localhost:8000/api/lookup?identifier=9108128632
-# Expected: HTTP 403 {"error": "LICENSE_EXPIRED"}
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-*In the browser at `http://localhost:5173`, the full-screen "Licence expired" screen appears.*
 
-### Step 3: Renew with Long License (No Restart)
-Copy the key from `licenses/long_license.key` and paste it into the renewal input on screen, or run:
+Verify the health endpoint:
+
+```text
+http://localhost:8000/health
+```
+
+Expected result:
+
+```json
+{
+  "ok": true,
+  "status": "healthy"
+}
+```
+
+### 3. Frontend Setup
+
+Open a second terminal.
+
+Navigate to the frontend directory:
+
 ```bash
-curl -X POST http://localhost:8000/api/license/activate \
-  -H "Content-Type: application/json" \
-  -d @licenses/long_license.json
+cd Cyber/frontend
 ```
 
-### Step 4: Confirm App Is Immediately Restored
+Install dependencies:
+
 ```bash
-curl http://localhost:8000/api/license/status
-# Expected: {"status": "ACTIVE", "active": true}
-
-# Normal lookups resume immediately:
-curl http://localhost:8000/api/lookup?identifier=9108128632
-# Expected: HTTP 200 with normal lookup result!
+npm install
 ```
-*The browser screen instantly unlocks without restarting uvicorn or the browser!*
+
+Configure the frontend API base URL according to the current frontend configuration.
+
+For local development:
+
+```text
+http://localhost:8000
+```
+
+Start the frontend:
+
+```bash
+npm run dev
+```
+
+Open the local Vite URL displayed in the terminal.
+
+### 4. Android Backend Connection
+
+For an Android phone connected to the same Wi-Fi network as the development computer:
+
+1. Start the backend on the development computer.
+2. Find the computer's active Wi-Fi IPv4 address.
+3. Configure the Android app to use that address.
+4. Ensure the phone and computer can communicate over the local network.
+5. Open the app and test the health endpoint.
+6. Test reporting, lookup, map, and alerts.
+
+Example development API address:
+
+```text
+http://<YOUR_COMPUTER_WIFI_IP>:8000
+```
+
+Replace the placeholder with the actual development computer address.
+
+Do not use `localhost` as the backend address inside the Android application when the backend is running on the computer. On the phone, `localhost` refers to the phone itself.
 
 ---
 
-## 16. How to Deploy the Application (HTTPS)
+## 📱 Android Application
 
-### Option A: Systemd + Reverse Proxy (Nginx / Caddy on VPS)
-1. **Backend Service:**
-   ```ini
-   [Unit]
-   Description=CyberForge Backend
-   After=network.target
+CyberForge uses Capacitor to package its frontend for Android.
 
-   [Service]
-   User=www-data
-   WorkingDirectory=/opt/cyberforge/backend
-   ExecStart=/opt/cyberforge/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4
-   Restart=always
+### Android Development
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
-2. **Caddy (Automatic HTTPS):**
-   ```caddyfile
-   scam-map.yourdomain.in {
-       # Serve built React frontend
-       root * /opt/cyberforge/cyberforge/frontend/dist
-       file_server
+The Android project can be opened through Android Studio.
 
-       # Reverse proxy API calls to FastAPI
-       handle /api/* {
-           reverse_proxy 127.0.0.1:8000
-       }
-       handle /health {
-           reverse_proxy 127.0.0.1:8000
-       }
-       try_files {path} /index.html
-   }
-   ```
+Before generating a release build:
 
-### Option B: Cloud Hosting (Railway / Render / Fly.io)
-- Set build command: `pip install -r backend/requirements.txt && cd cyberforge/frontend && npm install && npm run build`
-- Set start command: `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
+- Verify the Java version.
+- Verify Android SDK installation.
+- Verify Gradle compatibility.
+- Configure the backend URL.
+- Build the frontend.
+- Synchronize the Capacitor project.
+- Build and test the Android application.
+
+### Android Demo Requirements
+
+The application should be tested on an actual Android device.
+
+Verify:
+
+- Application launches successfully.
+- Backend health check succeeds.
+- Reports can be submitted.
+- Identifier lookup works.
+- Map data loads.
+- Alerts load.
+- Dispute functionality works where authorized.
+- Network failures produce understandable messages.
+
+An APK build alone does not establish that every feature works on a physical device.
 
 ---
 
-## 17. Dispute System (Report Reference ID)
+## 🧪 Testing
 
-- Disputes are strictly filed against a specific report **Reference ID** (`report_id`), **not** a raw phone number, bank account, or identifier.
-- Filing a dispute against a phone number returns **HTTP 400 Bad Request**.
-- Filing a dispute against a non-existent ID returns **HTTP 404 Not Found**.
-- Disputing marks the specific report as `is_disputed = 1`, caps the entity verdict at `SUSPICIOUS`, preserves all evidence, and displays the `⚠️ Disputed` badge.
+CyberForge includes backend and frontend testing.
+
+### Backend Tests
+
+Backend tests validate API behavior, report processing, trust rules, and relevant application logic.
+
+Run the backend tests from the backend directory:
+
+```bash
+python -m pytest
+```
+
+### Frontend Tests
+
+Run frontend tests from the frontend directory:
+
+```bash
+npm test
+```
+
+Use the actual test script configured in `package.json`.
+
+### Production Build
+
+```bash
+npm run build
+```
+
+### Test Coverage Areas
+
+| Area | Validation |
+|---|---|
+| Health | Backend responds correctly |
+| Reporting | Valid and invalid report requests |
+| Lookup | Identifier validation and verdict responses |
+| Trust engine | Distinct reporters and classification rules |
+| Coordinated reporting | Related report detection |
+| Verified businesses | Legitimate entity handling |
+| Map | Geographical filtering and response |
+| Alerts | Area-based alert retrieval |
+| Disputes | Authorization and decision workflows |
+| Frontend | UI behavior and API integration |
+
+### Testing Philosophy
+
+Tests should validate actual behavior rather than merely confirming that an endpoint responds.
+
+The final README should include the verified test count and the exact commands used to reproduce the results.
 
 ---
 
-## 18. Verified Businesses & Helplines
+## 🎬 Demonstration Workflow
 
-The database contains pre-seeded verified entities (Appendix C):
-- National Cyber Helpline: `1930`
-- Do Not Call Registry: `1909`
-- State Bank of India Toll-Free: `18001234`
-- HDFC Bank Helpline: `18002026161`
-- ICICI Bank Toll-Free: `18001080`
-- Verified businesses always return `VERIFIED_BUSINESS` and are immune to community vandalism.
+This section provides a suggested judging demonstration.
+
+### Step 1 — Start the Application
+
+Start the backend and frontend.
+
+Verify that the health endpoint returns a successful response.
+
+### Step 2 — Submit a Report
+
+Submit a report through the application using an identifier from the controlled demo dataset.
+
+Show the report submission result.
+
+### Step 3 — Check the Identifier
+
+Open the lookup interface.
+
+Demonstrate how the application displays the current verdict, report count, and available information.
+
+### Step 4 — Demonstrate Trust Evaluation
+
+Use a controlled test scenario to show why multiple submissions are not automatically treated as independent reports.
+
+Explain the distinction between total reports and distinct reporters.
+
+### Step 5 — Demonstrate Verified Business Handling
+
+Use a verified-business example from the prepared demo dataset.
+
+Explain why verified-business records are important for reducing incorrect classifications.
+
+### Step 6 — Explore the Scam Map
+
+Open the map and demonstrate area-based scam intelligence.
+
+Explain that the map represents eligible reports and geographical aggregation rather than exact reporter locations.
+
+### Step 7 — Demonstrate Alerts
+
+Open the alerts interface and show the available area-based information.
+
+### Step 8 — Demonstrate Dispute Workflow
+
+Use the prepared dispute scenario.
+
+Explain the authorization, review, decision, and audit process.
+
+### Step 9 — Explain Privacy
+
+Show how public results mask identifiers and avoid exposing reporter identities.
 
 ---
 
-## 19. Known Limitations
+## ⚠️ Limitations
 
-- **Centroid Resolution:** Pincodes without centroid mapping in the national registry are cataloged under "Unmapped Area Reports" to prevent inventing misleading coordinates.
-- **In-Memory License Manager:** Dynamically uploaded licenses are held in memory during the demo; for permanent multi-instance deployments, backing license state with Redis or SQLite is recommended.
+CyberForge is a community-intelligence platform and has important limitations.
+
+### Community Reports Are Not Proof
+
+A report may be incorrect, malicious, outdated, or incomplete.
+
+Users should not treat a community classification as definitive proof of fraud.
+
+### Coordinated Reporting Is Difficult
+
+Similarity signals can help identify coordinated activity, but they cannot guarantee that all coordinated campaigns will be detected.
+
+### False Positives Are Possible
+
+Legitimate businesses and individuals may be reported incorrectly.
+
+Verified-business records and dispute workflows help address this risk but do not eliminate it.
+
+### Geographical Data Has Limitations
+
+Area-based reporting depends on the geographical information available in submitted reports.
+
+The map should not be interpreted as a precise representation of scam activity at every location.
+
+### Local Development Requires Network Configuration
+
+Android devices must be configured to reach the development backend.
+
+A successful local health check does not automatically establish that the Android app can reach the same server.
+
+### No Machine-Learning Classification
+
+The current project uses its implemented deterministic trust and verification logic.
+
+It should not be described as an ML-based scam prediction system unless a validated ML component is integrated into the application.
+
+---
+
+## 🔮 Future Improvements
+
+Potential future improvements include:
+
+- Stronger authentication and account management
+- Improved report verification workflows
+- More robust coordinated-report detection
+- Expanded verified-business data
+- Better geographical aggregation
+- Improved administrative investigation tools
+- More comprehensive automated integration tests
+- Production deployment and monitoring
+- Accessibility improvements
+- Multilingual user experience
+- More extensive real-world evaluation
+
+Future improvements are not necessarily implemented in the current version.
+
+---
+
+## 👥 Team
+
+**Team Name:** Gandadagudi
+
+**Project:** CyberForge — Community Scam Map
+
+**Hackathon:** CyberForge Hackathon
+
+**Organizer:** Mitigata
+
+**Location:** Bengaluru, India
+
+---
+
+## 🏁 Conclusion
+
+CyberForge demonstrates how community reporting, deterministic trust evaluation, coordinated-report analysis, geographical intelligence, and privacy-conscious design can work together to improve scam awareness.
+
+The platform focuses on more than collecting reports.
+
+It aims to evaluate reporting quality, reduce the influence of coordinated submissions, recognize verified businesses, and provide accessible scam intelligence through web and Android applications.
+
+**CyberForge — Report responsibly. Verify intelligently. Stay safer together.**
